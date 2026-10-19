@@ -356,6 +356,56 @@ class CameraTrackerManager:
             det["license_plate"] = track.license_plate
             det["is_stationary"] = track.is_stationary
 
+        # --- Resolução de Conflitos de Identidade Exclusiva em Cena (Anti-Clone) ---
+        # Impede que dois veículos ou pessoas físicas distintas recebam o mesmo nome ao mesmo tempo
+        claimed_identities: Dict[str, int] = {}
+        for det in detections:
+            tid = det.get("tracking_id")
+            if tid is None:
+                continue
+            track = self.active_tracks.get(tid)
+            if not track or not track.is_known:
+                continue
+
+            name = track.identity_name
+            if name in claimed_identities:
+                other_tid = claimed_identities[name]
+                other_track = self.active_tracks[other_tid]
+
+                # Placa confirmada tem prioridade máxima
+                if other_track.license_plate and not track.license_plate:
+                    winner_tid, loser_track = other_tid, track
+                elif track.license_plate and not other_track.license_plate:
+                    winner_tid, loser_track = tid, other_track
+                    claimed_identities[name] = tid
+                elif other_track.match_confidence >= track.match_confidence:
+                    winner_tid, loser_track = other_tid, track
+                else:
+                    winner_tid, loser_track = tid, other_track
+                    claimed_identities[name] = tid
+
+                # Reverte o rastro perdedor para Desconhecido
+                loser_track.is_known = False
+                plate_tag = f" [{loser_track.license_plate}]" if loser_track.license_plate else ""
+                loser_track.identity_name = f"{loser_track.class_label} Desconhecido{plate_tag}"
+                logger.debug(
+                    f"🛡️ Anti-Clone: Conflito resolvido em {self.camera_name}. "
+                    f"'{name}' atribuído exclusivamente ao ID #{winner_tid}. ID #{loser_track.tracking_id} revertido para desconhecido."
+                )
+            else:
+                claimed_identities[name] = tid
+
+        # Sincroniza as informações definitivas nas detecções para anotação e eventos
+        for det in detections:
+            tid = det.get("tracking_id")
+            track = self.active_tracks.get(tid)
+            if track:
+                det["person_name"] = track.identity_name
+                det["is_known"] = track.is_known
+                det["face_confidence"] = track.match_confidence
+                det["license_plate"] = track.license_plate
+                det["is_stationary"] = track.is_stationary
+
         # Gera o frame anotado com as cores e nomes correspondentes
         annotated_frame = detector_engine.draw_annotations(raw_frame, detections)
 
