@@ -202,9 +202,13 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // --- Conectar Stream de Câmera via WebSocket Binário ---
+  // --- Conectar Stream de Câmera via WebSocket Binário com Pacing Adaptativo ---
   function connectCameraStream(camId) {
     if (state.wsConnections[camId]) {
-      try { state.wsConnections[camId].close(); } catch (e) {}
+      try { 
+        state.wsConnections[camId].onclose = null;
+        state.wsConnections[camId].close(); 
+      } catch (e) {}
     }
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -220,8 +224,20 @@ document.addEventListener("DOMContentLoaded", () => {
     let fpsTimer = performance.now();
     let firstFrame = true;
 
+    ws.onopen = () => {
+      // Solicita frame inicial ao abrir a conexão
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send("next");
+      }
+    };
+
     ws.onmessage = async (event) => {
       if (!ctx || !(event.data instanceof Blob)) return;
+
+      // Se a aba estiver em segundo plano, não processa nem solicita novos frames
+      if (document.hidden) {
+        return;
+      }
 
       try {
         const imageBitmap = await createImageBitmap(event.data);
@@ -234,6 +250,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
         ctx.drawImage(imageBitmap, 0, 0, canvas.width, canvas.height);
         imageBitmap.close();
+
+        // Sinaliza ao servidor que este frame foi desenhado e solicita o próximo frame em tempo real
+        if (ws.readyState === WebSocket.OPEN && !document.hidden) {
+          ws.send("next");
+        }
 
         frameCount++;
         const now = performance.now();
@@ -253,19 +274,40 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       } catch (err) {
         console.warn(`Erro ao renderizar frame de ${camId}:`, err);
+        if (ws.readyState === WebSocket.OPEN && !document.hidden) {
+          ws.send("next");
+        }
       }
     };
 
     ws.onclose = () => {
-      const statusEl = document.getElementById(`status-pill-${camId}`);
-      if (statusEl) {
-        statusEl.className = "cam-status-pill offline";
-        statusEl.innerHTML = `<span class="chip-dot"></span> RECONECTANDO`;
+      // Reconecta apenas se a aba estiver ativa em primeiro plano
+      if (!document.hidden && state.cameras.some(c => c.id === camId)) {
+        const statusEl = document.getElementById(`status-pill-${camId}`);
+        if (statusEl) {
+          statusEl.className = "cam-status-pill offline";
+          statusEl.innerHTML = `<span class="chip-dot"></span> RECONECTANDO`;
+        }
+        setTimeout(() => {
+          if (!document.hidden) connectCameraStream(camId);
+        }, 2000);
       }
-      setTimeout(() => connectCameraStream(camId), 3000);
     };
 
     state.wsConnections[camId] = ws;
+  }
+
+  function disconnectAllCameraStreams() {
+    Object.keys(state.wsConnections).forEach(camId => {
+      try {
+        const ws = state.wsConnections[camId];
+        if (ws) {
+          ws.onclose = null; // Evita loop de reconexão enquanto estiver oculta
+          ws.close();
+        }
+      } catch (e) {}
+    });
+    state.wsConnections = {};
   }
 
   function connectAllCameraStreams() {
@@ -273,6 +315,19 @@ document.addEventListener("DOMContentLoaded", () => {
       connectCameraStream(cam.id);
     });
   }
+
+  // --- Sincronização Estrita ao Alternar Abas (Zero Latência) ---
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      // Usuário retornou à página: restabelece conexões para obter o frame do segundo atual
+      connectAllCameraStreams();
+      loadSystemStats();
+      refreshCameraTelemetry();
+    } else {
+      // Usuário saiu da aba: suspende streams pesados de vídeo para evitar buffering acumulado
+      disconnectAllCameraStreams();
+    }
+  });
 
   // --- Atualizar Telemetria das Câmeras ---
   async function refreshCameraTelemetry() {

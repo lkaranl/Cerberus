@@ -10,23 +10,39 @@ ws_router = APIRouter(prefix="/ws", tags=["WebSockets"])
 @ws_router.websocket("/stream/{camera_id}")
 async def websocket_stream(websocket: WebSocket, camera_id: str):
     """
-    Streaming contínuo de frames JPEG processados com bounding boxes em tempo real.
-    Envia frames binários otimizados diretamente ao cliente para renderização fluida no Canvas.
+    Streaming contínuo de frames JPEG processados em tempo real com controle de fluxo (flow control / pacing).
+    Garante sincronia temporal estrita com zero-lag, mesmo quando o cliente minimiza ou alterna abas.
     """
     await websocket.accept()
     logger.info(f"Cliente WebSocket conectado ao stream da câmera: {camera_id}")
 
     try:
         last_sent_bytes = None
-        while True:
-            jpeg_bytes = stream_manager.latest_annotated_jpeg.get(camera_id)
 
+        # Envia primeiro frame de imediato para renderização instantânea
+        initial_frame = stream_manager.latest_annotated_jpeg.get(camera_id)
+        if initial_frame is not None:
+            await websocket.send_bytes(initial_frame)
+            last_sent_bytes = initial_frame
+
+        while True:
+            # Aguarda sinalização de prontidão do cliente ("next")
+            # Timeout de 0.6s: se o cliente for para background, o servidor NÃO enfileira frames no buffer
+            try:
+                msg = await asyncio.wait_for(websocket.receive_text(), timeout=0.6)
+            except asyncio.TimeoutError:
+                continue
+
+            jpeg_bytes = stream_manager.latest_annotated_jpeg.get(camera_id)
             if jpeg_bytes is not None and jpeg_bytes is not last_sent_bytes:
                 await websocket.send_bytes(jpeg_bytes)
                 last_sent_bytes = jpeg_bytes
-
-            # Taxa de envio de até 25-30 FPS dependendo da captura
-            await asyncio.sleep(0.033)
+            else:
+                await asyncio.sleep(0.015)
+                latest = stream_manager.latest_annotated_jpeg.get(camera_id)
+                if latest is not None:
+                    await websocket.send_bytes(latest)
+                    last_sent_bytes = latest
 
     except WebSocketDisconnect:
         logger.info(f"Cliente desconectou do stream da câmera: {camera_id}")
