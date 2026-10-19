@@ -131,6 +131,14 @@ class YOLODetectorEngine:
             name = det.get("person_name", "Desconhecido")
             is_known = det.get("is_known", False)
             plate = det.get("license_plate", "")
+            is_stationary = det.get("is_stationary", False)
+
+            status_tag = ""
+            if is_stationary:
+                if entity_type == "vehicle":
+                    status_tag = " [Estacionado]"
+                elif entity_type == "pet":
+                    status_tag = " [Parado]"
 
             # Esquema de Cores (BGR):
             # Pessoa Conhecida -> Verde Neon (118, 230, 0)
@@ -146,12 +154,12 @@ class YOLODetectorEngine:
                     box_color = (255, 0, 180)
                 else:
                     box_color = (118, 230, 0)
-                label_text = f"{name} ({int(conf_val * 100)}%)"
+                label_text = f"{name}{status_tag} ({int(conf_val * 100)}%)"
             else:
                 box_color = (0, 180, 255)
                 id_tag = f"#{tracking_id}" if tracking_id is not None else "?"
                 plate_tag = f" [{plate}]" if plate else ""
-                label_text = f"{class_label} {id_tag}{plate_tag} ({int(conf_val * 100)}%)"
+                label_text = f"{class_label} {id_tag}{plate_tag}{status_tag} ({int(conf_val * 100)}%)"
 
             # Desenha a caixa
             cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), box_color, 2)

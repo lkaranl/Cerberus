@@ -33,12 +33,54 @@ class TrackedEntity:
         self.license_plate: str = ""
         self.eval_count: int = 0
 
+        # Análise de Movimento & Detecção de Estacionamento
+        self.centroid_history: List[Tuple[float, float, float]] = []  # (x, y, timestamp)
+        self.is_stationary: bool = False
+        self.stationary_anchor_pos: Optional[Tuple[float, float]] = None
+        self.stationary_since: Optional[float] = None
+
     def update(self, confidence: float, bbox: Tuple[int, int, int, int]) -> None:
+        now = time.time()
         self.consecutive_frames += 1
-        self.last_seen = time.time()
+        self.last_seen = now
         if confidence > self.best_confidence:
             self.best_confidence = confidence
             self.best_bbox = bbox
+
+        # Atualiza centróide para análise de movimento
+        cx = (bbox[0] + bbox[2]) / 2.0
+        cy = (bbox[1] + bbox[3]) / 2.0
+        self.centroid_history.append((cx, cy, now))
+
+        # Mantém histórico recente (últimos 8 segundos)
+        self.centroid_history = [pt for pt in self.centroid_history if (now - pt[2]) <= 8.0]
+
+        # Calcula dispersão de movimento para identificar se está estacionado
+        box_w = max(1, bbox[2] - bbox[0])
+        box_h = max(1, bbox[3] - bbox[1])
+        diag = np.hypot(box_w, box_h)
+
+        if len(self.centroid_history) >= 6:
+            xs = [pt[0] for pt in self.centroid_history]
+            ys = [pt[1] for pt in self.centroid_history]
+            motion_spread = np.hypot(max(xs) - min(xs), max(ys) - min(ys))
+
+            # Limiar de imobilidade: jitter típico de câmera/detector é de 10-20px
+            stationary_thresh = max(18.0, diag * 0.12)
+
+            if motion_spread < stationary_thresh:
+                if not self.is_stationary:
+                    self.is_stationary = True
+                    self.stationary_anchor_pos = (cx, cy)
+                    self.stationary_since = now
+            else:
+                # Se houver deslocamento significativo em relação à âncora estacionária (> 35% da diagonal ou > 45px)
+                if self.stationary_anchor_pos:
+                    anchor_dist = np.hypot(cx - self.stationary_anchor_pos[0], cy - self.stationary_anchor_pos[1])
+                    if anchor_dist > max(45.0, diag * 0.35):
+                        self.is_stationary = False
+                        self.stationary_anchor_pos = None
+                        self.stationary_since = None
 
 
 class CameraTrackerManager:
@@ -58,6 +100,10 @@ class CameraTrackerManager:
         # Histórico de rastros perdidos recentemente para Anti-ID-Switching
         self.recent_lost_tracks: List[Dict[str, Any]] = []
 
+        # Âncoras espaciais de objetos estacionados (veículos em vagas, pets deitados)
+        # Permite persistir a supressão de alertas mesmo com perdas de tracking por minutos
+        self.parked_anchors: List[Dict[str, Any]] = []
+
         # Cooldown temporal por chave de entidade (ex: cam-0_person_Desconhecido -> timestamp)
         self.last_alert_time: Dict[str, float] = {}
 
@@ -75,6 +121,38 @@ class CameraTrackerManager:
         denom = float(boxAArea + boxBArea - interArea)
         return interArea / denom if denom > 0 else 0.0
 
+    def _update_parked_anchor(self, track: TrackedEntity, bbox: Tuple[int, int, int, int]) -> None:
+        """Mantém ou atualiza uma âncora espacial para um veículo ou pet estacionado."""
+        now = time.time()
+        cx = (bbox[0] + bbox[2]) / 2.0
+        cy = (bbox[1] + bbox[3]) / 2.0
+
+        for anchor in self.parked_anchors:
+            if anchor["entity_type"] == track.entity_type:
+                iou = self._calculate_iou(bbox, anchor["bbox"])
+                dist = np.hypot(cx - anchor["centroid"][0], cy - anchor["centroid"][1])
+                if iou >= 0.25 or dist < 45.0:
+                    anchor["bbox"] = bbox
+                    anchor["centroid"] = (cx, cy)
+                    anchor["last_seen"] = now
+                    anchor["identity_name"] = track.identity_name
+                    anchor["license_plate"] = track.license_plate
+                    anchor["is_known"] = track.is_known
+                    anchor["event_triggered"] = track.event_triggered
+                    return
+
+        self.parked_anchors.append({
+            "bbox": bbox,
+            "centroid": (cx, cy),
+            "entity_type": track.entity_type,
+            "identity_name": track.identity_name,
+            "license_plate": track.license_plate,
+            "is_known": track.is_known,
+            "event_triggered": track.event_triggered,
+            "first_parked": now,
+            "last_seen": now
+        })
+
     def _cleanup_stale_tracks(self) -> None:
         now = time.time()
         stale_ids = [
@@ -84,7 +162,7 @@ class CameraTrackerManager:
         for tid in stale_ids:
             track = self.active_tracks[tid]
             if track.best_bbox:
-                # Salva no histórico recente para herança caso a pessoa volte a ser detectada segundos depois
+                # Salva no histórico recente para herança caso a entidade volte a ser detectada segundos depois
                 self.recent_lost_tracks.append({
                     "tracking_id": tid,
                     "bbox": track.best_bbox,
@@ -93,17 +171,56 @@ class CameraTrackerManager:
                     "identity_name": track.identity_name,
                     "entity_type": track.entity_type,
                     "is_known": track.is_known,
-                    "license_plate": track.license_plate
+                    "license_plate": track.license_plate,
+                    "is_stationary": track.is_stationary
                 })
+                # Se estava estacionado, preserva nas âncoras da vaga
+                if track.is_stationary:
+                    self._update_parked_anchor(track, track.best_bbox)
+
             del self.active_tracks[tid]
 
-        # Mantém histórico de rastros perdidos por até 10 segundos
+        # Mantém histórico de rastros em movimento perdidos por até 10 segundos
         self.recent_lost_tracks = [
             t for t in self.recent_lost_tracks if (now - t["last_seen"]) < 10.0
         ]
 
+        # Mantém âncoras de vagas ocupadas/estacionadas por até 10 minutos sem detecção
+        self.parked_anchors = [
+            a for a in self.parked_anchors if (now - a["last_seen"]) < 600.0
+        ]
+
     def _check_track_inheritance(self, new_bbox: Tuple[int, int, int, int], entity_type: str) -> Optional[Dict[str, Any]]:
-        """Verifica se um novo tracking ID sobrepõe espacialmente um rastro recém-perdido."""
+        """
+        Verifica se um novo tracking ID sobrepõe:
+        1. Uma vaga/âncora estacionada (veículo estacionado).
+        2. Um rastro em movimento recém-perdido (anti-ID-switching).
+        """
+        now = time.time()
+        c1_x = (new_bbox[0] + new_bbox[2]) / 2.0
+        c1_y = (new_bbox[1] + new_bbox[3]) / 2.0
+
+        # 1. Prioridade: Verifica se pertence a uma vaga estacionada já conhecida
+        for anchor in self.parked_anchors:
+            if anchor["entity_type"] != entity_type:
+                continue
+            iou = self._calculate_iou(new_bbox, anchor["bbox"])
+            dist = np.hypot(c1_x - anchor["centroid"][0], c1_y - anchor["centroid"][1])
+            if iou >= 0.25 or dist < 45.0:
+                anchor["last_seen"] = now
+                return {
+                    "tracking_id": -1,
+                    "bbox": anchor["bbox"],
+                    "last_seen": anchor["last_seen"],
+                    "event_triggered": True,  # Já alertou no passado, não repete alerta
+                    "identity_name": anchor["identity_name"],
+                    "entity_type": anchor["entity_type"],
+                    "is_known": anchor["is_known"],
+                    "license_plate": anchor["license_plate"],
+                    "is_stationary": True
+                }
+
+        # 2. Verifica no histórico de rastros dinâmicos recém-perdidos
         for lost in self.recent_lost_tracks:
             if lost["entity_type"] != entity_type:
                 continue
@@ -112,11 +229,9 @@ class CameraTrackerManager:
             if iou >= 0.20:
                 return lost
 
-            # Checagem por proximidade de centroides (para pessoas em movimento)
-            c1_x = (new_bbox[0] + new_bbox[2]) / 2
-            c1_y = (new_bbox[1] + new_bbox[3]) / 2
-            c2_x = (lost["bbox"][0] + lost["bbox"][2]) / 2
-            c2_y = (lost["bbox"][1] + lost["bbox"][3]) / 2
+            # Checagem por proximidade de centroides (para pessoas/veículos em movimento)
+            c2_x = (lost["bbox"][0] + lost["bbox"][2]) / 2.0
+            c2_y = (lost["bbox"][1] + lost["bbox"][3]) / 2.0
             dist = np.hypot(c1_x - c2_x, c1_y - c2_y)
 
             box_diag = np.hypot(new_bbox[2] - new_bbox[0], new_bbox[3] - new_bbox[1])
@@ -180,16 +295,23 @@ class CameraTrackerManager:
                     new_track.is_known = inherited["is_known"]
                     new_track.license_plate = inherited["license_plate"]
                     new_track.event_triggered = inherited["event_triggered"]
-                    new_track.consecutive_frames = settings.min_consecutive_frames # Já considera estável
+                    new_track.is_stationary = inherited.get("is_stationary", False)
+                    if new_track.is_stationary:
+                        new_track.stationary_anchor_pos = ((bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0)
+                    new_track.consecutive_frames = settings.min_consecutive_frames  # Já considera estável
                     logger.debug(
                         f"🔄 Herança de Rastro: ID #{tid} herdou estado de #{inherited['tracking_id']} "
-                        f"({new_track.identity_name}) em {self.camera_name}"
+                        f"({new_track.identity_name}, estacionado={new_track.is_stationary}) em {self.camera_name}"
                     )
 
                 self.active_tracks[tid] = new_track
 
             track = self.active_tracks[tid]
             track.update(conf, bbox)
+
+            # Se o objeto estiver estacionado/parado, preserva/atualiza na âncora da vaga
+            if track.is_stationary:
+                self._update_parked_anchor(track, bbox)
 
             # --- Identificação nos Primeiros Frames do Rastro ---
             if not track.is_known and track.eval_count < 5:
@@ -232,6 +354,7 @@ class CameraTrackerManager:
             det["is_known"] = track.is_known
             det["face_confidence"] = track.match_confidence
             det["license_plate"] = track.license_plate
+            det["is_stationary"] = track.is_stationary
 
         # Gera o frame anotado com as cores e nomes correspondentes
         annotated_frame = detector_engine.draw_annotations(raw_frame, detections)
@@ -246,6 +369,11 @@ class CameraTrackerManager:
             if not track:
                 continue
 
+            # Se o objeto estiver estacionado/parado e já tiver alertado,
+            # suprime QUALQUER novo alerta enquanto continuar na vaga!
+            if track.is_stationary and track.event_triggered:
+                continue
+
             # Chave de Cooldown por câmera + tipo + identidade
             cooldown_key = f"{self.camera_id}_{track.entity_type}_{track.identity_name}"
             last_alert = self.last_alert_time.get(cooldown_key, 0.0)
@@ -256,6 +384,8 @@ class CameraTrackerManager:
             # 2. Não deve ter disparado ainda neste rastro
             if track.consecutive_frames >= settings.min_consecutive_frames and not track.event_triggered:
                 track.event_triggered = True
+                if track.is_stationary:
+                    self._update_parked_anchor(track, det["bbox"])
 
                 # Se já alertou recentemente essa mesma pessoa/entidade nesta câmera, suprime duplicidade
                 if elapsed_since_last_alert < settings.alert_cooldown_seconds:
