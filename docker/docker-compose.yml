@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  sentinela-vision:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: sentinela-vision-app
+    restart: unless-stopped
+    ports:
+      - "8095:8095"
+    volumes:
+      # A flag ':z' é mandatória no Nobara/Fedora por conta do SELinux
+      - ../data:/app/data:z
+      - ../config:/app/config:ro,z
+    environment:
+      - PORT=8095
+      - DEVICE=cuda:0
+      - CUDA_VISIBLE_DEVICES=0
+      - LOG_LEVEL=INFO
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

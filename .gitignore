@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+
+# Dados locais e eventos gravados
+data/events/*.jpg
+data/events/*.png
+data/*.db
+data/*.db-journal
+
+# Modelos pré-treinados
+models/*.pt
+models/*.onnx
+models/*.engine
+
+# IDE e Sistema
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
