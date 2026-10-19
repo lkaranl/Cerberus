@@ -377,7 +377,10 @@ document.addEventListener("DOMContentLoaded", () => {
           <span class="event-time">${timeFormatted}</span>
         </div>
         <div class="event-details-row">
-          <span class="event-id-badge">Pessoa #${evt.tracking_id}</span>
+          ${evt.is_known 
+            ? `<span class="event-id-badge" style="background: var(--accent-green-dim); color: var(--accent-green); border: 1px solid rgba(0, 230, 118, 0.4);">👤 ${evt.person_name}</span>`
+            : `<span class="event-id-badge" style="background: rgba(255, 171, 0, 0.15); color: var(--accent-amber); border: 1px solid rgba(255, 171, 0, 0.4);">⚠️ Desconhecido #${evt.tracking_id}</span>`
+          }
           <span class="event-confidence">${confPct}%</span>
         </div>
       </div>

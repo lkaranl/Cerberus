@@ -100,3 +100,32 @@ async def get_system_stats():
         "cameras_active": len([c for c in stream_manager.cameras_config if c.active]),
         "total_events_logged": total_events
     }
+
+
+@router.get("/stats/analytics")
+async def get_analytics():
+    """Retorna dados estatísticos consolidados para o dashboard analítico."""
+    return await db.get_analytics_data()
+
+
+@router.get("/faces")
+async def get_known_faces():
+    """Lista as pessoas atualmente cadastradas no módulo de reconhecimento facial."""
+    from app.detector.recognizer import face_recognizer
+    return {
+        "is_ready": face_recognizer.is_ready,
+        "known_persons": list(face_recognizer.known_embeddings.keys())
+    }
+
+
+@router.post("/faces/reload")
+async def reload_known_faces():
+    """Recarrega todas as fotos da pasta data/known_faces/ sem reiniciar o servidor."""
+    from app.detector.recognizer import face_recognizer
+    count = face_recognizer.load_known_faces()
+    return {
+        "status": "success",
+        "persons_loaded": count,
+        "persons": list(face_recognizer.known_embeddings.keys())
+    }
+

@@ -9,6 +9,7 @@ import numpy as np
 from app.core.config import settings
 from app.core.logging import logger
 from app.storage.database import db
+from app.detector.recognizer import face_recognizer
 
 class TrackedPerson:
     def __init__(self, tracking_id: int):
@@ -19,6 +20,12 @@ class TrackedPerson:
         self.event_triggered: bool = False
         self.best_confidence: float = 0.0
         self.best_bbox: Optional[Tuple[int, int, int, int]] = None
+
+        # Dados de Reconhecimento Facial
+        self.person_name: str = "Desconhecido"
+        self.is_known: bool = False
+        self.face_confidence: float = 0.0
+        self.face_eval_count: int = 0
 
     def update(self, confidence: float, bbox: Tuple[int, int, int, int]) -> None:
         self.consecutive_frames += 1
@@ -31,8 +38,7 @@ class TrackedPerson:
 class CameraTrackerManager:
     """
     Gerencia o ciclo de vida dos identificadores rastreados (ByteTrack) por câmera,
-    controlando disparo único de alertas com evidências recortadas (crop com 10% de margem)
-    e frame completo anotado.
+    integrando reconhecimento facial com cache por rastro e registro de presenças.
     """
     def __init__(self, camera_id: str, camera_name: str, event_callback=None):
         self.camera_id = camera_id
@@ -73,16 +79,15 @@ class CameraTrackerManager:
     async def process_tracks(
         self,
         raw_frame: np.ndarray,
-        annotated_frame: np.ndarray,
         detections: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
+    ) -> Tuple[np.ndarray, List[Dict[str, Any]]]:
         """
         Processa as detecções do frame atual.
-        Se uma pessoa for confirmada por > 2 frames consecutivos e ainda não tiver gerado
-        evento na sessão de presença atual, salva o recorte, frame completo e insere no DB.
+        Executa reconhecimento facial nos primeiros frames do rastro e salva o evento de presença.
         """
+        from app.detector.engine import detector_engine
+
         self._cleanup_stale_tracks()
-        current_seen_ids = set()
         triggered_events = []
 
         for det in detections:
@@ -90,7 +95,6 @@ class CameraTrackerManager:
             if tid is None:
                 continue
 
-            current_seen_ids.add(tid)
             conf = det.get("confidence", 0.0)
             bbox = det.get("bbox", (0, 0, 0, 0))
 
@@ -100,7 +104,34 @@ class CameraTrackerManager:
             track = self.active_tracks[tid]
             track.update(conf, bbox)
 
-            # Requisito do Spec: Confirmar pessoa por mais de 2 frames consecutivos
+            # Tenta identificar o rosto nos primeiros 4 frames ou até reconhecer alguém
+            if not track.is_known and track.face_eval_count < 4:
+                track.face_eval_count += 1
+                name, face_conf, is_known = face_recognizer.identify_person(raw_frame, bbox)
+                if is_known:
+                    track.person_name = name
+                    track.is_known = True
+                    track.face_confidence = face_conf
+                    logger.info(f"🎯 Rosto identificado em {self.camera_name}: {name} ({int(face_conf * 100)}%)")
+
+            # Associa a identidade encontrada no payload da detecção
+            det["person_name"] = track.person_name
+            det["is_known"] = track.is_known
+            det["face_confidence"] = track.face_confidence
+
+        # Gera o frame anotado com as identidades reconhecidas
+        annotated_frame = detector_engine.draw_annotations(raw_frame, detections)
+
+        for det in detections:
+            tid = det.get("tracking_id")
+            if tid is None:
+                continue
+
+            track = self.active_tracks.get(tid)
+            if not track:
+                continue
+
+            # Requisito: Confirmar pessoa por mais de 2 frames consecutivos para registrar evento
             if track.consecutive_frames >= 2 and not track.event_triggered:
                 track.event_triggered = True
 
@@ -111,14 +142,15 @@ class CameraTrackerManager:
                 events_dir = Path(settings.events_dir)
                 events_dir.mkdir(parents=True, exist_ok=True)
 
-                crop_filename = f"{date_prefix}_{self.camera_id}_id{tid}_crop.jpg"
-                full_filename = f"{date_prefix}_{self.camera_id}_id{tid}_full.jpg"
+                tag_name = track.person_name.replace(" ", "_")
+                crop_filename = f"{date_prefix}_{self.camera_id}_{tag_name}_id{tid}_crop.jpg"
+                full_filename = f"{date_prefix}_{self.camera_id}_{tag_name}_id{tid}_full.jpg"
 
                 crop_path = str(events_dir / crop_filename)
                 full_path = str(events_dir / full_filename)
 
                 # Salvar imagens de evidência
-                crop_img = self._extract_crop(raw_frame, bbox, margin_pct=0.10)
+                crop_img = self._extract_crop(raw_frame, track.best_bbox or det["bbox"], margin_pct=0.10)
                 cv2.imwrite(crop_path, crop_img, [cv2.IMWRITE_JPEG_QUALITY, 90])
                 cv2.imwrite(full_path, annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
 
@@ -128,16 +160,20 @@ class CameraTrackerManager:
                     "camera_name": self.camera_name,
                     "timestamp": timestamp_str,
                     "tracking_id": tid,
-                    "confidence": round(conf, 3),
+                    "confidence": round(det["confidence"], 3),
                     "crop_path": crop_path,
-                    "full_path": full_path
+                    "full_path": full_path,
+                    "person_name": track.person_name,
+                    "is_known": track.is_known,
+                    "face_confidence": track.face_confidence
                 }
 
-                # Persistência assíncrona no SQLite
+                # Persistência assíncrona no SQLite (mesmo com navegador fechado!)
                 await db.save_event(event_record)
+                status_icon = "🟢" if track.is_known else "🟡"
                 logger.info(
-                    f"🔔 Evento de presença registrado: {self.camera_name} - Pessoa #{tid} "
-                    f"({int(conf * 100)}%) -> {crop_filename}"
+                    f"{status_icon} Evento de presença registrado: {self.camera_name} - {track.person_name} "
+                    f"(ID #{tid}) -> {crop_filename}"
                 )
 
                 triggered_events.append(event_record)
@@ -148,4 +184,4 @@ class CameraTrackerManager:
                     except Exception as err:
                         logger.error(f"Erro no callback de evento: {err}")
 
-        return triggered_events
+        return annotated_frame, triggered_events

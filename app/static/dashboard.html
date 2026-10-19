@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Analítico — Sentinela Vision</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <style>
+    /* Estilos específicos do Dashboard */
+    .dashboard-container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .dash-nav-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-radius: var(--radius-sm);
+      background: rgba(0, 240, 255, 0.12);
+      border: 1px solid var(--accent-cyan);
+      color: var(--accent-cyan);
+      text-decoration: none;
+      font-size: 0.85rem;
+      font-weight: 600;
+      transition: all 0.2s ease;
+    }
+
+    .dash-nav-btn:hover {
+      background: var(--accent-cyan);
+      color: #000;
+      box-shadow: 0 0 16px rgba(0, 240, 255, 0.4);
+    }
+
+    .btn-action {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-main);
+      padding: 8px 16px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-family: var(--font-main);
+      font-size: 0.85rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+    }
+
+    .btn-action:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    /* KPI Cards Grid */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 18px;
+    }
+
+    .kpi-card {
+      background: var(--bg-card);
+      backdrop-filter: blur(14px);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      box-shadow: var(--shadow-card);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .kpi-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+    }
+
+    .kpi-total::before { background: var(--accent-cyan); }
+    .kpi-known::before { background: var(--accent-green); }
+    .kpi-unknown::before { background: var(--accent-amber); }
+    .kpi-today::before { background: #b388ff; }
+
+    .kpi-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .kpi-title {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .kpi-icon {
+      color: var(--text-muted);
+    }
+
+    .kpi-value {
+      font-size: 2.2rem;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      color: #fff;
+    }
+
+    .kpi-footer {
+      font-size: 0.78rem;
+      color: var(--text-dim);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .kpi-footer strong {
+      color: var(--text-main);
+    }
+
+    /* Charts Row */
+    .charts-row {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 20px;
+    }
+
+    .chart-card {
+      background: var(--bg-card);
+      backdrop-filter: blur(14px);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 22px;
+      box-shadow: var(--shadow-card);
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .chart-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .chart-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* SVG Histogram Bars */
+    .hourly-chart-container {
+      width: 100%;
+      height: 220px;
+      display: flex;
+      align-items: flex-end;
+      gap: 6px;
+      padding-top: 20px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .hour-bar-col {
+      flex: 1;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+      position: relative;
+    }
+
+    .hour-bar {
+      width: 100%;
+      background: linear-gradient(180deg, var(--accent-cyan), rgba(0, 240, 255, 0.2));
+      border-radius: 4px 4px 0 0;
+      min-height: 4px;
+      transition: height 0.5s ease;
+      cursor: pointer;
+    }
+
+    .hour-bar:hover {
+      background: #fff;
+      box-shadow: 0 0 12px var(--accent-cyan);
+    }
+
+    .hour-label {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      color: var(--text-dim);
+    }
+
+    .hour-tooltip {
+      position: absolute;
+      top: -28px;
+      background: rgba(0, 0, 0, 0.85);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: #fff;
+      border: 1px solid var(--border-subtle);
+      display: none;
+      white-space: nowrap;
+    }
+
+    .hour-bar-col:hover .hour-tooltip {
+      display: block;
+    }
+
+    /* Camera Breakdown Bars */
+    .cam-breakdown-list {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .cam-bar-item {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .cam-bar-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.85rem;
+    }
+
+    .cam-bar-track {
+      width: 100%;
+      height: 8px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: var(--radius-full);
+      overflow: hidden;
+    }
+
+    .cam-bar-fill {
+      height: 100%;
+      border-radius: var(--radius-full);
+      transition: width 0.6s ease;
+    }
+
+    /* Ranking Table */
+    .ranking-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .ranking-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border-subtle);
+    }
+
+    .ranking-user {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .ranking-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--accent-green-dim);
+      border: 1px solid var(--accent-green);
+      color: var(--accent-green);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 0.85rem;
+    }
+
+    /* Auditoria Table */
+    .table-container {
+      overflow-x: auto;
+    }
+
+    .audit-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.85rem;
+    }
+
+    .audit-table th {
+      padding: 12px 16px;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border-subtle);
+      font-weight: 600;
+    }
+
+    .audit-table td {
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      vertical-align: middle;
+    }
+
+    .audit-table tr:hover {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .table-thumb {
+      width: 44px;
+      height: 44px;
+      border-radius: 6px;
+      object-fit: cover;
+      cursor: pointer;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .badge-known {
+      background: var(--accent-green-dim);
+      color: var(--accent-green);
+      border: 1px solid rgba(0, 230, 118, 0.3);
+      padding: 3px 8px;
+      border-radius: var(--radius-full);
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .badge-unknown {
+      background: rgba(255, 171, 0, 0.15);
+      color: var(--accent-amber);
+      border: 1px solid rgba(255, 171, 0, 0.3);
+      padding: 3px 8px;
+      border-radius: var(--radius-full);
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .filter-tabs {
+      display: flex;
+      gap: 8px;
+    }
+
+    .filter-tab {
+      padding: 6px 14px;
+      border-radius: var(--radius-full);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      font-size: 0.78rem;
+      cursor: pointer;
+      font-family: var(--font-main);
+    }
+
+    .filter-tab.active {
+      background: var(--accent-cyan-dim);
+      border-color: var(--accent-cyan);
+      color: var(--accent-cyan);
+    }
+
+    @media (max-width: 992px) {
+      .charts-row {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="20" x2="18" y2="10"/>
+            <line x1="12" y1="20" x2="12" y2="4"/>
+            <line x1="6" y1="20" x2="6" y2="14"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="brand-title">SENTINELA <span>ANALYTICS</span></h1>
+          <p class="brand-subtitle">Relatórios Estatísticos de Presença e Identificação por IA</p>
+        </div>
+      </div>
+
+      <div class="header-status">
+        <button class="btn-action" id="btn-reload-faces" title="Recarrega novas fotos em data/known_faces/">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="23 4 23 10 17 10"/>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+          </svg>
+          Sincronizar Rostos
+        </button>
+
+        <a href="/" class="dash-nav-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+          Ao Vivo (Câmeras)
+        </a>
+      </div>
+    </header>
+
+    <!-- Conteúdo Principal do Dashboard -->
+    <main class="dashboard-container">
+      <!-- Cards de Métricas Principais (KPIs) -->
+      <section class="kpi-grid">
+        <div class="kpi-card kpi-total">
+          <div class="kpi-header">
+            <span class="kpi-title">Total de Presenças</span>
+            <svg class="kpi-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+          </div>
+          <div class="kpi-value" id="kpi-total">0</div>
+          <div class="kpi-footer">Histórico completo gravado no SQLite</div>
+        </div>
+
+        <div class="kpi-card kpi-known">
+          <div class="kpi-header">
+            <span class="kpi-title">Pessoas Conhecidas</span>
+            <svg class="kpi-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-green)" stroke-width="2">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <polyline points="16 11 18 13 22 9"/>
+            </svg>
+          </div>
+          <div class="kpi-value" id="kpi-known">0</div>
+          <div class="kpi-footer"><strong id="kpi-known-pct">0%</strong> do total identificado</div>
+        </div>
+
+        <div class="kpi-card kpi-unknown">
+          <div class="kpi-header">
+            <span class="kpi-title">Desconhecidos</span>
+            <svg class="kpi-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-amber)" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+          </div>
+          <div class="kpi-value" id="kpi-unknown">0</div>
+          <div class="kpi-footer"><strong id="kpi-unknown-pct">0%</strong> sem correspondência facial</div>
+        </div>
+
+        <div class="kpi-card kpi-today">
+          <div class="kpi-header">
+            <span class="kpi-title">Detectados Hoje</span>
+            <svg class="kpi-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#b388ff" stroke-width="2">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+              <line x1="16" y1="2" x2="16" y2="6"/>
+              <line x1="8" y1="2" x2="8" y2="6"/>
+              <line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+          </div>
+          <div class="kpi-value" id="kpi-today">0</div>
+          <div class="kpi-footer">Movimentações nas últimas 24 horas</div>
+        </div>
+      </section>
+
+      <!-- Gráficos de Distribuição -->
+      <section class="charts-row">
+        <!-- Gráfico de Horários do Dia -->
+        <div class="chart-card">
+          <div class="chart-header">
+            <h3 class="chart-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+              </svg>
+              Distribuição por Horário do Dia
+            </h3>
+            <span class="kpi-footer">Picos de movimentação (00h - 23h)</span>
+          </div>
+
+          <div class="hourly-chart-container" id="hourly-bars">
+            <!-- Barras horárias injetadas via JS -->
+          </div>
+        </div>
+
+        <!-- Distribuição por Câmera -->
+        <div class="chart-card">
+          <div class="chart-header">
+            <h3 class="chart-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/>
+                <line x1="7" y1="2" x2="7" y2="22"/>
+                <line x1="17" y1="2" x2="17" y2="22"/>
+                <line x1="2" y1="12" x2="22" y2="12"/>
+              </svg>
+              Atividade por Câmera
+            </h3>
+          </div>
+
+          <div class="cam-breakdown-list" id="camera-breakdown">
+            <!-- Barras injetadas via JS -->
+          </div>
+        </div>
+      </section>
+
+      <!-- Tabela de Auditoria e Histórico -->
+      <section class="chart-card">
+        <div class="chart-header">
+          <h3 class="chart-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+              <polyline points="10 9 9 9 8 9"/>
+            </svg>
+            Histórico Detalhado de Auditoria
+          </h3>
+
+          <div class="filter-tabs">
+            <button class="filter-tab active" data-filter="all">Todos</button>
+            <button class="filter-tab" data-filter="known">Apenas Conhecidos</button>
+            <button class="filter-tab" data-filter="unknown">Desconhecidos</button>
+          </div>
+        </div>
+
+        <div class="table-container">
+          <table class="audit-table">
+            <thead>
+              <tr>
+                <th>Evidência</th>
+                <th>Identidade</th>
+                <th>Câmera</th>
+                <th>Data / Hora</th>
+                <th>Confiança</th>
+                <th>ID Rastreio</th>
+              </tr>
+            </thead>
+            <tbody id="audit-table-body">
+              <!-- Linhas injetadas via JS -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Modal de Inspeção em Alta Resolução -->
+  <div class="modal-backdrop" id="dash-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="modal-name">Detalhes do Evento</h3>
+        <button class="modal-close-btn" id="modal-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-media-row">
+          <div class="modal-media-box">
+            <span class="media-box-label">Rosto / Recorte</span>
+            <img id="modal-crop" src="" alt="Recorte" class="modal-img-crop">
+          </div>
+          <div class="modal-media-box">
+            <span class="media-box-label">Cena Completa com Caixa</span>
+            <img id="modal-full" src="" alt="Cena Completa" class="modal-img-full">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      let currentFilter = "all";
+
+      async function loadDashboard() {
+        try {
+          const res = await fetch("/api/stats/analytics");
+          if (!res.ok) return;
+          const data = await res.json();
+
+          // Atualizar KPIs
+          document.getElementById("kpi-total").textContent = data.total_events || 0;
+          document.getElementById("kpi-known").textContent = data.total_known || 0;
+          document.getElementById("kpi-unknown").textContent = data.total_unknown || 0;
+          document.getElementById("kpi-today").textContent = data.events_today || 0;
+
+          const total = data.total_events || 1;
+          const knownPct = Math.round(((data.total_known || 0) / total) * 100);
+          const unknownPct = Math.round(((data.total_unknown || 0) / total) * 100);
+
+          document.getElementById("kpi-known-pct").textContent = `${knownPct}%`;
+          document.getElementById("kpi-unknown-pct").textContent = `${unknownPct}%`;
+
+          renderHourlyChart(data.by_hour || []);
+          renderCameraBreakdown(data.by_camera || [], data.total_events || 1);
+        } catch (e) {
+          console.error("Erro ao carregar dados do dashboard:", e);
+        }
+      }
+
+      function renderHourlyChart(hourlyData) {
+        const container = document.getElementById("hourly-bars");
+        container.innerHTML = "";
+
+        const hourMap = {};
+        let maxCount = 1;
+
+        hourlyData.forEach(item => {
+          const hr = parseInt(item.hour, 10);
+          const cnt = parseInt(item.count, 10);
+          hourMap[hr] = cnt;
+          if (cnt > maxCount) maxCount = cnt;
+        });
+
+        for (let h = 0; h < 24; h++) {
+          const count = hourMap[h] || 0;
+          const pct = Math.max(4, Math.round((count / maxCount) * 100));
+
+          const col = document.createElement("div");
+          col.className = "hour-bar-col";
+          col.innerHTML = `
+            <div class="hour-tooltip">${count} pessoas (${String(h).padStart(2, '0')}:00)</div>
+            <div class="hour-bar" style="height: ${pct}%;"></div>
+            <span class="hour-label">${String(h).padStart(2, '0')}</span>
+          `;
+          container.appendChild(col);
+        }
+      }
+
+      function renderCameraBreakdown(camData, total) {
+        const container = document.getElementById("camera-breakdown");
+        container.innerHTML = "";
+
+        if (camData.length === 0) {
+          container.innerHTML = "<p style='color: var(--text-dim); font-size: 0.85rem;'>Sem dados de câmeras ainda.</p>";
+          return;
+        }
+
+        const colors = ["var(--accent-cyan)", "var(--accent-green)", "var(--accent-amber)"];
+
+        camData.forEach((item, idx) => {
+          const pct = Math.round((item.count / total) * 100);
+          const color = colors[idx % colors.length];
+
+          const el = document.createElement("div");
+          el.className = "cam-bar-item";
+          el.innerHTML = `
+            <div class="cam-bar-header">
+              <span>${item.camera_name}</span>
+              <strong>${item.count} (${pct}%)</strong>
+            </div>
+            <div class="cam-bar-track">
+              <div class="cam-bar-fill" style="width: ${pct}%; background: ${color};"></div>
+            </div>
+          `;
+          container.appendChild(el);
+        });
+      }
+
+      async function loadEventsTable() {
+        try {
+          let url = "/api/events?limit=40";
+          if (currentFilter === "known") url += "&is_known=true";
+          if (currentFilter === "unknown") url += "&is_known=false";
+
+          const res = await fetch(url);
+          if (!res.ok) return;
+          const data = await res.json();
+
+          const tbody = document.getElementById("audit-table-body");
+          tbody.innerHTML = "";
+
+          if (!data.events || data.events.length === 0) {
+            tbody.innerHTML = "<tr><td colspan='6' style='text-align:center; color:var(--text-dim); padding: 30px;'>Nenhum registro encontrado.</td></tr>";
+            return;
+          }
+
+          data.events.forEach(evt => {
+            const tr = document.createElement("tr");
+            const timeObj = new Date(evt.timestamp);
+            const formattedTime = isNaN(timeObj.getTime()) ? evt.timestamp : timeObj.toLocaleString("pt-BR");
+
+            const cropUrl = `/api/events/${evt.event_id || evt.id}/crop`;
+            const badgeClass = evt.is_known ? "badge-known" : "badge-unknown";
+            const personName = evt.person_name || (evt.is_known ? "Conhecido" : "Desconhecido");
+
+            tr.innerHTML = `
+              <td>
+                <img src="${cropUrl}" alt="Crop" class="table-thumb" onclick="openModal('${evt.event_id || evt.id}', '${personName}')">
+              </td>
+              <td><span class="${badgeClass}">${personName}</span></td>
+              <td>${evt.camera_name}</td>
+              <td style="font-family: var(--font-mono);">${formattedTime}</td>
+              <td style="font-family: var(--font-mono);">${Math.round((evt.confidence || 0) * 100)}%</td>
+              <td style="font-family: var(--font-mono); color: var(--text-dim);">#${evt.tracking_id}</td>
+            `;
+            tbody.appendChild(tr);
+          });
+        } catch (e) {
+          console.error("Erro ao carregar tabela:", e);
+        }
+      }
+
+      // Filtros
+      document.querySelectorAll(".filter-tab").forEach(tab => {
+        tab.addEventListener("click", () => {
+          document.querySelectorAll(".filter-tab").forEach(t => t.classList.remove("active"));
+          tab.classList.add("active");
+          currentFilter = tab.dataset.filter;
+          loadEventsTable();
+        });
+      });
+
+      // Recarregar fotos conhecidas
+      document.getElementById("btn-reload-faces").addEventListener("click", async () => {
+        const btn = document.getElementById("btn-reload-faces");
+        btn.textContent = "Sincronizando...";
+        try {
+          const res = await fetch("/api/faces/reload", { method: "POST" });
+          const data = await res.json();
+          alert(`Sincronização concluída! ${data.persons_loaded} pessoa(s) carregada(s): ${data.persons.join(", ")}`);
+        } catch (err) {
+          alert("Erro ao sincronizar rostos.");
+        } finally {
+          btn.innerHTML = `
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="23 4 23 10 17 10"/>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+            </svg>
+            Sincronizar Rostos
+          `;
+        }
+      });
+
+      // Modal
+      window.openModal = function(id, name) {
+        document.getElementById("modal-name").textContent = `Presença: ${name}`;
+        document.getElementById("modal-crop").src = `/api/events/${id}/crop`;
+        document.getElementById("modal-full").src = `/api/events/${id}/full`;
+        document.getElementById("dash-modal").classList.add("active");
+      };
+
+      document.getElementById("modal-close").addEventListener("click", () => {
+        document.getElementById("dash-modal").classList.remove("active");
+      });
+
+      loadDashboard();
+      loadEventsTable();
+    });
+  </script>
+</body>
+</html>

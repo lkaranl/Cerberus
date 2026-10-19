@@ -77,12 +77,16 @@ As configurações podem ser definidas via `.env` ou variáveis de ambiente:
 ## 📡 Endpoints Disponíveis
 
 ### REST
-- `GET /`: Interface web de monitoramento.
+- `GET /`: Interface web de monitoramento ao vivo.
+- `GET /dashboard`: Painel analítico e estatístico completo (gráficos por horário, câmeras e pessoas).
 - `GET /api/cameras`: Status de conexão, resolução e FPS das câmeras.
 - `GET /api/events`: Histórico paginado de detecções.
 - `GET /api/events/{id}/crop`: Imagem recortada da pessoa detectada (com margem de 10%).
 - `GET /api/events/{id}/full`: Frame completo com anotações e bounding boxes.
 - `GET /api/stats`: Telemetria do sistema e uso de VRAM/hardware.
+- `GET /api/stats/analytics`: Dados estatísticos agregados para gráficos e relatórios.
+- `GET /api/faces`: Lista de pessoas conhecidas carregadas na memória.
+- `POST /api/faces/reload`: Recarrega fotos da pasta `data/known_faces/` sem reiniciar o servidor.
 
 ### WebSockets
 - `WS /ws/stream/{camera_id}`: Stream contínuo de frames JPEG binários.

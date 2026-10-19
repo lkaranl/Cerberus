@@ -67,8 +67,18 @@ if static_path.exists():
 
 @app.get("/", include_in_schema=False)
 async def serve_index():
-    """Entrega a interface web de monitoramento."""
+    """Entrega a interface web de monitoramento ao vivo."""
     index_file = static_path / "index.html"
     if index_file.exists():
         return FileResponse(index_file)
     return {"message": "Sentinela Vision API online. Interface estática não encontrada."}
+
+
+@app.get("/dashboard", include_in_schema=False)
+async def serve_dashboard():
+    """Entrega a interface do Dashboard Estatístico e Analítico."""
+    dash_file = static_path / "dashboard.html"
+    if dash_file.exists():
+        return FileResponse(dash_file)
+    return {"message": "Dashboard analítico não encontrado."}
+

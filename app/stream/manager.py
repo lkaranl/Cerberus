@@ -164,18 +164,20 @@ class StreamManager:
 
                 had_frame = True
 
-                # Executa inferência em thread separada para não bloquear o loop de eventos
-                annotated_frame, detections = await asyncio.to_thread(
-                    detector_engine.track,
+                # Executa detecção YOLO em thread separada
+                detections = await asyncio.to_thread(
+                    detector_engine.detect,
                     raw_frame,
                     cam.confidence_threshold,
                     settings.iou_threshold
                 )
 
-                # Processa rastreamento e eventos de presença
+                # Processa rastreamento, reconhecimento facial e anotação do frame
                 tracker = self.trackers.get(cam.id)
                 if tracker:
-                    await tracker.process_tracks(raw_frame, annotated_frame, detections)
+                    annotated_frame, _ = await tracker.process_tracks(raw_frame, detections)
+                else:
+                    annotated_frame = detector_engine.draw_annotations(raw_frame, detections)
 
                 # Codifica o frame anotado para JPEG otimizado
                 encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 80]
