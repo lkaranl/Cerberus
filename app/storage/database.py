@@ -272,5 +272,34 @@ class Database:
 
         return await asyncio.to_thread(_analytics)
 
+    async def clear_all_events(self, delete_files: bool = True) -> int:
+        """Limpa todos os eventos do banco de dados SQLite e recicla os arquivos de evidência em disco."""
+        def _clear():
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT crop_path, full_path FROM events")
+                rows = cursor.fetchall()
+
+                if delete_files:
+                    for row in rows:
+                        for path_str in (row["crop_path"], row["full_path"]):
+                            if path_str:
+                                try:
+                                    p = Path(path_str)
+                                    if p.exists() and p.is_file():
+                                        p.unlink()
+                                except Exception:
+                                    pass
+
+                cursor.execute("DELETE FROM events")
+                deleted_count = cursor.rowcount
+                conn.commit()
+                conn.execute("VACUUM")
+                return deleted_count
+
+        count = await asyncio.to_thread(_clear)
+        logger.info(f"🧹 Banco de dados de eventos limpo: {count} registros removidos.")
+        return count
+
 
 db = Database()

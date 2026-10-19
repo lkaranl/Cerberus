@@ -59,6 +59,19 @@
       border-color: rgba(255, 255, 255, 0.2);
     }
 
+    .btn-danger {
+      color: #ff5252;
+      border-color: rgba(255, 82, 82, 0.35);
+      background: rgba(255, 82, 82, 0.08);
+    }
+
+    .btn-danger:hover {
+      background: rgba(255, 82, 82, 0.2);
+      border-color: #ff5252;
+      box-shadow: 0 0 14px rgba(255, 82, 82, 0.3);
+      color: #fff;
+    }
+
     /* KPI Cards Grid */
     .kpi-grid {
       display: grid;
@@ -401,6 +414,14 @@
             <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
           </svg>
           Sincronizar Cadastros
+        </button>
+
+        <button class="btn-action btn-danger" id="btn-clear-db" title="Limpar todo o histórico de eventos e evidências do banco de dados SQLite">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+          Limpar Banco de Dados
         </button>
 
         <a href="/" class="dash-nav-btn">
@@ -756,6 +777,34 @@
           `;
           loadDashboard();
           loadEventsTable();
+        }
+      });
+
+      // Limpar todo o Banco de Dados SQLite e Evidências
+      document.getElementById("btn-clear-db").addEventListener("click", async () => {
+        const confirmed = confirm(
+          "⚠️ ATENÇÃO: Deseja realmente APAGAR TODO O HISTÓRICO de eventos e fotos gravadas no banco de dados SQLite?\n\nEsta operação é definitiva e não pode ser revertida!"
+        );
+        if (!confirmed) return;
+
+        const btn = document.getElementById("btn-clear-db");
+        btn.textContent = "Limpando...";
+        try {
+          const res = await fetch("/api/events/clear", { method: "POST" });
+          const data = await res.json();
+          alert(data.message || "Banco de dados limpo com sucesso!");
+          loadDashboard();
+          loadEventsTable();
+        } catch (err) {
+          alert("Erro ao limpar banco de dados: " + err);
+        } finally {
+          btn.innerHTML = `
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+            Limpar Banco de Dados
+          `;
         }
       });
 

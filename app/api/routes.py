@@ -145,3 +145,15 @@ async def reload_known_entities():
     }
 
 
+@router.delete("/events/clear")
+@router.post("/events/clear")
+async def clear_events_database():
+    """Limpa todo o histórico de eventos e evidências do banco de dados SQLite."""
+    deleted = await db.clear_all_events(delete_files=True)
+    return {
+        "status": "success",
+        "message": f"Histórico limpo com sucesso. {deleted} registros removidos.",
+        "deleted_count": deleted
+    }
+
+
