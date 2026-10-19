@@ -119,19 +119,57 @@ Apenas quando o usuário clicar no botão *"Pedir Análise da IA"* no modal do d
 
 ---
 
+## 7. 🚪 Detecção de Proximidade e Permanência no Portão (*Gate Loitering* & Zona Perimetral)
+
+### O Problema:
+Pessoas passando pela rua ou na calçada oposta não representam ameaça e não devem gerar alertas nem gastar tokens. O perigo real ocorre quando alguém **se aproxima da grade/portão** e **permanece parado ali**.
+
+### Como Funciona a Solução em 2 Camadas (Sua Observação Precisa):
+
+#### Camada 1: Filtro Geométrico e Temporal Local (**Zero Tokens / 100% Gratuito na GPU**)
+- **Polígono de Proximidade (ROI)**: Desenhamos uma área virtual de 1 a 2 metros em frente ao portão na câmera `cam-0`.
+- **Filtro de Distância**:
+  - Se a pessoa está na rua ou longe da grade: **Ignorado**.
+  - Se a pessoa entra no raio de proximidade imediato do portão:
+    - O sistema local calcula o tempo de permanência (*loitering timer*).
+    - Se a pessoa for reconhecida pelo FaceNet local (Karan ou moradores): **Status Normal** (chegando ou saindo de casa).
+    - Se a pessoa for **Desconhecida** e permanecer parada no portão por mais de **10 a 15 segundos**: **Gatilho de Risco Disparado**.
+
+#### Camada 2: Agente de IA via OpenRouter (**Acionado Apenas no Gatilho Crítico**)
+Como a Camada 1 filtra 99% dos pedestres comuns sem gastar nenhum token, o Agente de IA só é acionado quando a situação realmente exige inteligência:
+- **Entrada enviada ao Agente** (~120 tokens):
+  ```json
+  {
+    "evento": "permanencia_no_portao",
+    "identidade": "Desconhecido",
+    "tempo_parado_segundos": 22,
+    "horario": "15:40",
+    "historico_recente": "Nenhum veiculo associado"
+  }
+  ```
+- **Ação do Agente**:
+  - Classifica a intenção: se é um comportamento típico de entrega, visitante aguardando ou atitude suspeita/sondagem.
+  - Gera um alerta com nível de urgência customizado para o morador:
+    > *"⚠️ Desconhecido parado em frente ao seu portão há mais de 20 segundos. Verifique o acesso."*
+- **Consumo**: ~150 tokens **apenas** quando alguém realmente ficar parado na sua grade.
+
+---
+
 ## 📊 Tabela de Estimativa de Consumo e Custos na OpenRouter
 
 | Funcionalidade | Frequência Típica | Tokens Médios | Custo Mensal Estimado (Gemini Flash / Llama 8B) |
 | :--- | :--- | :--- | :--- |
+| **Permanência no Portão (*Loitering*)** | 2 a 5x por dia | ~150 tokens | < **R$ 0,10 / mês** |
 | **Resumo Diário Executivo** | 1x ao dia | ~200 tokens | < **R$ 0,05 / mês** |
 | **Análise de Risco na Madrugada** | 2 a 5x por noite | ~150 tokens | < **R$ 0,10 / mês** |
 | **Chat de Histórico (Dúvidas)** | 3 a 5 consultas/dia | ~250 tokens | < **R$ 0,15 / mês** |
 | **Notificações Humanizadas** | Eventos selecionados | ~80 tokens | < **R$ 0,20 / mês** |
-| **Total Estimado** | Operação 24/7 | Baixíssimo | **Inferior a R$ 1,00 / mês** |
+| **Total Estimado** | Operação 24/7 | Baixíssimo | **Inferior a R$ 1,20 / mês** |
 
 ---
 
 ## 🛠️ Próximos Passos Sugeridos para Implementação
 1. Adicionar `OPENROUTER_API_KEY` e `OPENROUTER_MODEL` no arquivo `.env`.
-2. Criar um módulo cliente leve assíncrono em `app/agent/client.py` usando `httpx` (sem SDKs pesados).
-3. Integrar o Resumo Diário no Dashboard e o Auditor de Risco Noturno.
+2. Criar a demarcação de polígono perimetral do portão na configuração da câmera (`config/cameras.json`).
+3. Criar o cliente leve assíncrono em `app/agent/client.py` usando `httpx` para interagir com a OpenRouter.
+4. Conectar o gatilho de proximidade do portão ao avaliador de risco do Agente.
