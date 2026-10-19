@@ -51,12 +51,18 @@ class Database:
                     conn.execute("ALTER TABLE events ADD COLUMN is_known BOOLEAN DEFAULT 0")
                 if "face_confidence" not in existing_cols:
                     conn.execute("ALTER TABLE events ADD COLUMN face_confidence REAL DEFAULT 0.0")
+                if "entity_type" not in existing_cols:
+                    conn.execute("ALTER TABLE events ADD COLUMN entity_type TEXT DEFAULT 'person'")
+                if "license_plate" not in existing_cols:
+                    conn.execute("ALTER TABLE events ADD COLUMN license_plate TEXT DEFAULT ''")
 
                 conn.commit()
 
                 # 3. Cria índices sobre as colunas migradas
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_events_person_name ON events (person_name)")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_events_is_known ON events (is_known)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_events_entity_type ON events (entity_type)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_events_license_plate ON events (license_plate)")
                 conn.commit()
 
             logger.info(f"Banco de dados SQLite pronto em: {self.db_path}")
@@ -65,7 +71,7 @@ class Database:
             raise
 
     async def save_event(self, event: Dict[str, Any]) -> int:
-        """Salva um novo registro de detecção com identidade no SQLite."""
+        """Salva um novo registro de detecção (Pessoa, Veículo ou Pet) no SQLite."""
         def _insert():
             with self._get_connection() as conn:
                 cursor = conn.cursor()
@@ -74,8 +80,9 @@ class Database:
                     INSERT INTO events (
                         event_id, camera_id, camera_name, timestamp,
                         tracking_id, confidence, crop_path, full_path,
-                        person_name, is_known, face_confidence
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        person_name, is_known, face_confidence,
+                        entity_type, license_plate
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         event["event_id"],
@@ -88,7 +95,9 @@ class Database:
                         event["full_path"],
                         event.get("person_name", "Desconhecido"),
                         1 if event.get("is_known") else 0,
-                        float(event.get("face_confidence", 0.0))
+                        float(event.get("face_confidence", 0.0)),
+                        event.get("entity_type", "person"),
+                        event.get("license_plate", "")
                     )
                 )
                 conn.commit()
@@ -102,9 +111,10 @@ class Database:
         offset: int = 0,
         camera_id: Optional[str] = None,
         is_known: Optional[bool] = None,
+        entity_type: Optional[str] = None,
         person_name: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        """Busca histórico paginado com suporte a filtros avançados."""
+        """Busca histórico paginado com suporte a filtros por tipo de entidade e identidade."""
         def _query():
             with self._get_connection() as conn:
                 cursor = conn.cursor()
@@ -117,6 +127,9 @@ class Database:
                 if is_known is not None:
                     conditions.append("is_known = ?")
                     params.append(1 if is_known else 0)
+                if entity_type:
+                    conditions.append("entity_type = ?")
+                    params.append(entity_type)
                 if person_name:
                     conditions.append("person_name = ?")
                     params.append(person_name)
@@ -125,7 +138,8 @@ class Database:
                 sql = f"""
                     SELECT id, event_id, camera_id, camera_name, timestamp,
                            tracking_id, confidence, crop_path, full_path,
-                           person_name, is_known, face_confidence, created_at
+                           person_name, is_known, face_confidence,
+                           entity_type, license_plate, created_at
                     FROM events
                     {where_clause}
                     ORDER BY id DESC
@@ -163,7 +177,7 @@ class Database:
         return await asyncio.to_thread(_count)
 
     async def get_analytics_data(self) -> Dict[str, Any]:
-        """Calcula estatísticas agregadas de presença para o Dashboard."""
+        """Calcula estatísticas agregadas de presenças, veículos e pets para o Dashboard."""
         def _analytics():
             with self._get_connection() as conn:
                 cursor = conn.cursor()
@@ -182,6 +196,14 @@ class Database:
                 today_prefix = datetime.now().strftime("%Y-%m-%d")
                 cursor.execute("SELECT COUNT(*) FROM events WHERE timestamp LIKE ?", (f"{today_prefix}%",))
                 events_today = cursor.fetchone()[0]
+
+                # Distribuição por Tipo de Entidade (Pessoas, Veículos, Pets)
+                cursor.execute("""
+                    SELECT entity_type, COUNT(*) as count
+                    FROM events
+                    GROUP BY entity_type
+                """)
+                by_entity = {row["entity_type"]: row["count"] for row in cursor.fetchall()}
 
                 # Distribuição por Câmera
                 cursor.execute("""
@@ -202,25 +224,50 @@ class Database:
                 """)
                 by_hour = [dict(row) for row in cursor.fetchall()]
 
-                # Ranking de Pessoas Conhecidas
+                # Top Pessoas
                 cursor.execute("""
                     SELECT person_name, COUNT(*) as count, MAX(timestamp) as last_seen
                     FROM events
-                    WHERE is_known = 1
+                    WHERE entity_type = 'person' AND is_known = 1
                     GROUP BY person_name
                     ORDER BY count DESC
                     LIMIT 10
                 """)
                 top_persons = [dict(row) for row in cursor.fetchall()]
 
+                # Top Veículos & Placas
+                cursor.execute("""
+                    SELECT person_name, license_plate, is_known, COUNT(*) as count, MAX(timestamp) as last_seen
+                    FROM events
+                    WHERE entity_type = 'vehicle'
+                    GROUP BY person_name, license_plate
+                    ORDER BY count DESC
+                    LIMIT 10
+                """)
+                top_vehicles = [dict(row) for row in cursor.fetchall()]
+
+                # Top Pets
+                cursor.execute("""
+                    SELECT person_name, is_known, COUNT(*) as count, MAX(timestamp) as last_seen
+                    FROM events
+                    WHERE entity_type = 'pet'
+                    GROUP BY person_name
+                    ORDER BY count DESC
+                    LIMIT 10
+                """)
+                top_pets = [dict(row) for row in cursor.fetchall()]
+
                 return {
                     "total_events": total_events,
                     "total_known": total_known,
                     "total_unknown": total_unknown,
                     "events_today": events_today,
+                    "by_entity": by_entity,
                     "by_camera": by_camera,
                     "by_hour": by_hour,
-                    "top_persons": top_persons
+                    "top_persons": top_persons,
+                    "top_vehicles": top_vehicles,
+                    "top_pets": top_pets
                 }
 
         return await asyncio.to_thread(_analytics)

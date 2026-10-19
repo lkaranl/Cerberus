@@ -367,24 +367,40 @@ document.addEventListener("DOMContentLoaded", () => {
     const cropUrl = `/api/events/${evt.event_id || evt.id}/crop`;
     const confPct = Math.round((evt.confidence || 0) * 100);
 
-    card.innerHTML = `
-      <div class="event-thumb-wrap">
-        <img class="event-thumb" src="${cropUrl}" alt="Crop" loading="lazy" onerror="this.src='/static/img/placeholder.png'">
-      </div>
-      <div class="event-info">
-        <div class="event-cam-row">
-          <span class="event-cam-name">${evt.camera_name || evt.camera_id}</span>
-          <span class="event-time">${timeFormatted}</span>
-        </div>
-        <div class="event-details-row">
-          ${evt.is_known 
-            ? `<span class="event-id-badge" style="background: var(--accent-green-dim); color: var(--accent-green); border: 1px solid rgba(0, 230, 118, 0.4);">👤 ${evt.person_name}</span>`
-            : `<span class="event-id-badge" style="background: rgba(255, 171, 0, 0.15); color: var(--accent-amber); border: 1px solid rgba(255, 171, 0, 0.4);">⚠️ Desconhecido #${evt.tracking_id}</span>`
-          }
-          <span class="event-confidence">${confPct}%</span>
-        </div>
-      </div>
-    `;
+        let typeIcon = "👤";
+        let badgeStyle = "background: var(--accent-green-dim); color: var(--accent-green); border: 1px solid rgba(0, 230, 118, 0.4);";
+
+        if (evt.entity_type === "vehicle") {
+          typeIcon = "🚗";
+          if (evt.is_known) badgeStyle = "background: rgba(0, 240, 255, 0.15); color: var(--accent-cyan); border: 1px solid rgba(0, 240, 255, 0.4);";
+        } else if (evt.entity_type === "pet") {
+          typeIcon = "🐾";
+          if (evt.is_known) badgeStyle = "background: rgba(224, 64, 251, 0.15); color: #e040fb; border: 1px solid rgba(224, 64, 251, 0.4);";
+        }
+
+        if (!evt.is_known) {
+          badgeStyle = "background: rgba(255, 171, 0, 0.15); color: var(--accent-amber); border: 1px solid rgba(255, 171, 0, 0.4);";
+        }
+
+        const plateSnippet = evt.license_plate ? ` [${evt.license_plate}]` : '';
+
+        card.innerHTML = `
+          <div class="event-thumb-wrap">
+            <img class="event-thumb" src="${cropUrl}" alt="Crop" loading="lazy" onerror="this.src='/static/img/placeholder.png'">
+          </div>
+          <div class="event-info">
+            <div class="event-cam-row">
+              <span class="event-cam-name">${evt.camera_name || evt.camera_id}</span>
+              <span class="event-time">${timeFormatted}</span>
+            </div>
+            <div class="event-details-row">
+              <span class="event-id-badge" style="${badgeStyle}">
+                ${typeIcon} ${evt.person_name}${plateSnippet}
+              </span>
+              <span class="event-confidence">${confPct}%</span>
+            </div>
+          </div>
+        `;
 
     card.addEventListener("click", () => openModal(evt));
 

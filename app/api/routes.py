@@ -21,10 +21,18 @@ async def get_cameras():
 async def get_events(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
-    camera_id: Optional[str] = Query(default=None)
+    camera_id: Optional[str] = Query(default=None),
+    is_known: Optional[bool] = Query(default=None),
+    entity_type: Optional[str] = Query(default=None)
 ):
-    """Retorna histórico de eventos de detecção de pessoas com paginação."""
-    events = await db.get_recent_events(limit=limit, offset=offset, camera_id=camera_id)
+    """Retorna histórico de eventos de detecção (pessoas, veículos, pets) com filtros."""
+    events = await db.get_recent_events(
+        limit=limit,
+        offset=offset,
+        camera_id=camera_id,
+        is_known=is_known,
+        entity_type=entity_type
+    )
     total = await db.get_total_events_count(camera_id=camera_id)
     return {
         "total": total,
@@ -119,13 +127,21 @@ async def get_known_faces():
 
 
 @router.post("/faces/reload")
-async def reload_known_faces():
-    """Recarrega todas as fotos da pasta data/known_faces/ sem reiniciar o servidor."""
+async def reload_known_entities():
+    """Recarrega todas as fotos e placas de pessoas, veículos e pets sem reiniciar o servidor."""
     from app.detector.recognizer import face_recognizer
-    count = face_recognizer.load_known_faces()
+    from app.detector.visual_matcher import visual_matcher
+    p_count = face_recognizer.load_known_faces()
+    v_count = visual_matcher.load_vehicles()
+    pet_count = visual_matcher.load_pets()
     return {
         "status": "success",
-        "persons_loaded": count,
-        "persons": list(face_recognizer.known_embeddings.keys())
+        "persons_loaded": p_count,
+        "vehicles_loaded": v_count,
+        "pets_loaded": pet_count,
+        "persons": list(face_recognizer.known_embeddings.keys()),
+        "vehicles": list(visual_matcher.known_vehicles.keys()),
+        "pets": list(visual_matcher.known_pets.keys())
     }
+
 
