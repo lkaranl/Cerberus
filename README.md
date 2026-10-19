@@ -118,6 +118,7 @@ source .venv/bin/activate.fish
 Com o ambiente virtual ativado:
 ```bash
 pip install -r requirements.txt
+pip install --no-deps facenet-pytorch
 ```
 
 ### 4. Validar o Reconhecimento da GPU NVIDIA

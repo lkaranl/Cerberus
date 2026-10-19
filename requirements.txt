@@ -11,4 +11,6 @@ aiofiles>=23.2.1
 python-multipart>=0.0.9
 aiosqlite>=0.20.0
 lap>=0.5.12
-facenet-pytorch>=2.6.0
+pillow
+requests
+tqdm
