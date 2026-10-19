@@ -1,0 +1,47 @@
+[Unit]
+Description=Cerberus (Sentinela Vision) - Servico de Monitoramento e IA 24/7
+# Inicia apenas apos a rede local e resolucao de nomes estarem disponiveis
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# --- Tipo de Servico ---
+Type=simple
+
+# --- Permissoes de Execucao ---
+# Ajuste para o seu usuario e grupo no servidor Nobara Linux
+User=secundario
+Group=secundario
+
+# --- Diretorio de Trabalho ---
+# Diretorio raiz do repositorio onde estao as pastas 'app', 'config', 'data' e o arquivo '.env'
+WorkingDirectory=/home/secundario/Documentos/Cerberus
+
+# --- Variaveis de Ambiente ---
+# Garante que o ambiente virtual (.venv) e o Python sejam localizados prioritariamente
+Environment="PATH=/home/secundario/Documentos/Cerberus/.venv/bin:/usr/local/bin:/usr/bin"
+Environment="PYTHONUNBUFFERED=1"
+# Carrega automaticamente o arquivo de configuracao .env
+EnvironmentFile=-/home/secundario/Documentos/Cerberus/.env
+
+# --- Comando de Execucao ---
+# Executa o uvicorn diretamente pelo binario do ambiente virtual em segundo plano
+ExecStart=/home/secundario/Documentos/Cerberus/.venv/bin/python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8095
+
+# --- Confiabilidade e Recuperacao Autonoma ---
+# Garante reinicializacao automatica caso o processo caia ou seja interrompido
+Restart=always
+# Aguarda 5 segundos antes de reiniciar (evita loops rapidos e libera portas de rede)
+RestartSec=5s
+# Reinicio preventivo a cada 24 horas para manutencao de memoria e conexoes de cameras
+RuntimeMaxSec=24h
+
+# --- Limites de Recursos e Logs ---
+# Importante para manter conexoes RTSP e multiplos WebSockets simultaneos
+LimitNOFILE=65535
+SyslogIdentifier=cerberus-vision
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
