@@ -45,13 +45,35 @@ class CameraTrackerManager:
     """
     Gerencia o ciclo de vida dos rastros (ByteTrack) por câmera para pessoas,
     veículos (com placas) e animais de estimação (pets).
+    Incorpora debounce temporal, herança de rastros e supressão de duplicidades.
     """
     def __init__(self, camera_id: str, camera_name: str, event_callback=None):
         self.camera_id = camera_id
         self.camera_name = camera_name
         self.event_callback = event_callback
+
         self.active_tracks: Dict[int, TrackedEntity] = {}
         self.timeout_seconds: float = 6.0
+
+        # Histórico de rastros perdidos recentemente para Anti-ID-Switching
+        self.recent_lost_tracks: List[Dict[str, Any]] = []
+
+        # Cooldown temporal por chave de entidade (ex: cam-0_person_Desconhecido -> timestamp)
+        self.last_alert_time: Dict[str, float] = {}
+
+    def _calculate_iou(self, boxA: Tuple[int, int, int, int], boxB: Tuple[int, int, int, int]) -> float:
+        """Calcula Intersection over Union (IoU) entre duas caixas delimitadoras."""
+        xA = max(boxA[0], boxB[0])
+        yA = max(boxA[1], boxB[1])
+        xB = min(boxA[2], boxB[2])
+        yB = min(boxA[3], boxB[3])
+
+        interArea = max(0, xB - xA) * max(0, yB - yA)
+        boxAArea = (boxA[2] - boxA[0]) * (boxA[3] - boxA[1])
+        boxBArea = (boxB[2] - boxB[0]) * (boxB[3] - boxB[1])
+
+        denom = float(boxAArea + boxBArea - interArea)
+        return interArea / denom if denom > 0 else 0.0
 
     def _cleanup_stale_tracks(self) -> None:
         now = time.time()
@@ -60,7 +82,48 @@ class CameraTrackerManager:
             if (now - track.last_seen) > self.timeout_seconds
         ]
         for tid in stale_ids:
+            track = self.active_tracks[tid]
+            if track.best_bbox:
+                # Salva no histórico recente para herança caso a pessoa volte a ser detectada segundos depois
+                self.recent_lost_tracks.append({
+                    "tracking_id": tid,
+                    "bbox": track.best_bbox,
+                    "last_seen": track.last_seen,
+                    "event_triggered": track.event_triggered,
+                    "identity_name": track.identity_name,
+                    "entity_type": track.entity_type,
+                    "is_known": track.is_known,
+                    "license_plate": track.license_plate
+                })
             del self.active_tracks[tid]
+
+        # Mantém histórico de rastros perdidos por até 10 segundos
+        self.recent_lost_tracks = [
+            t for t in self.recent_lost_tracks if (now - t["last_seen"]) < 10.0
+        ]
+
+    def _check_track_inheritance(self, new_bbox: Tuple[int, int, int, int], entity_type: str) -> Optional[Dict[str, Any]]:
+        """Verifica se um novo tracking ID sobrepõe espacialmente um rastro recém-perdido."""
+        for lost in self.recent_lost_tracks:
+            if lost["entity_type"] != entity_type:
+                continue
+
+            iou = self._calculate_iou(new_bbox, lost["bbox"])
+            if iou >= 0.20:
+                return lost
+
+            # Checagem por proximidade de centroides (para pessoas em movimento)
+            c1_x = (new_bbox[0] + new_bbox[2]) / 2
+            c1_y = (new_bbox[1] + new_bbox[3]) / 2
+            c2_x = (lost["bbox"][0] + lost["bbox"][2]) / 2
+            c2_y = (lost["bbox"][1] + lost["bbox"][3]) / 2
+            dist = np.hypot(c1_x - c2_x, c1_y - c2_y)
+
+            box_diag = np.hypot(new_bbox[2] - new_bbox[0], new_bbox[3] - new_bbox[1])
+            if dist < (box_diag * 0.75):
+                return lost
+
+        return None
 
     def _extract_crop(self, frame: np.ndarray, bbox: Tuple[int, int, int, int], margin_pct: float = 0.10) -> np.ndarray:
         h, w = frame.shape[:2]
@@ -88,13 +151,12 @@ class CameraTrackerManager:
         detections: List[Dict[str, Any]]
     ) -> Tuple[np.ndarray, List[Dict[str, Any]]]:
         """
-        Processa as detecções do frame atual.
-        Executa reconhecimento facial para pessoas, leitura de placa e visual match para veículos,
-        e reconhecimento visual para animais.
+        Processa as detecções do frame atual com anti-ID switching, debounce e cooldown.
         """
         from app.detector.engine import detector_engine
 
         self._cleanup_stale_tracks()
+        now = time.time()
         triggered_events = []
 
         for det in detections:
@@ -107,8 +169,24 @@ class CameraTrackerManager:
             entity_type = det.get("entity_type", "person")
             class_label = det.get("class_label", "Objeto")
 
+            # --- Criação ou Atualização do Rastro ---
             if tid not in self.active_tracks:
-                self.active_tracks[tid] = TrackedEntity(tid, entity_type, class_label)
+                new_track = TrackedEntity(tid, entity_type, class_label)
+
+                # Herança Espacial de Rastro (Anti-ID-Switching)
+                inherited = self._check_track_inheritance(bbox, entity_type)
+                if inherited:
+                    new_track.identity_name = inherited["identity_name"]
+                    new_track.is_known = inherited["is_known"]
+                    new_track.license_plate = inherited["license_plate"]
+                    new_track.event_triggered = inherited["event_triggered"]
+                    new_track.consecutive_frames = settings.min_consecutive_frames # Já considera estável
+                    logger.debug(
+                        f"🔄 Herança de Rastro: ID #{tid} herdou estado de #{inherited['tracking_id']} "
+                        f"({new_track.identity_name}) em {self.camera_name}"
+                    )
+
+                self.active_tracks[tid] = new_track
 
             track = self.active_tracks[tid]
             track.update(conf, bbox)
@@ -119,7 +197,6 @@ class CameraTrackerManager:
                 crop_obj = self._extract_crop(raw_frame, bbox, margin_pct=0.05)
 
                 if entity_type == "person":
-                    # Reconhecimento Facial (FaceNet)
                     name, face_conf, is_known = face_recognizer.identify_person(raw_frame, bbox)
                     if is_known:
                         track.identity_name = name
@@ -128,12 +205,10 @@ class CameraTrackerManager:
                         logger.info(f"👤 Rosto identificado em {self.camera_name}: {name} ({int(face_conf * 100)}%)")
 
                 elif entity_type == "vehicle":
-                    # 1. Tenta ler placa do veículo (ANPR/LPR)
                     plate = plate_reader.read_plate(crop_obj)
                     if plate:
                         track.license_plate = plate
 
-                    # 2. Identificação de veículo (por placa ou por foto)
                     v_name, v_conf, v_known, matched_plate = visual_matcher.identify_vehicle(crop_obj, track.license_plate)
                     if v_known:
                         track.identity_name = v_name
@@ -145,7 +220,6 @@ class CameraTrackerManager:
                         track.identity_name = f"{class_label} [{track.license_plate}]"
 
                 elif entity_type == "pet":
-                    # Reconhecimento visual de gato ou cachorro
                     pet_name, pet_conf, pet_known = visual_matcher.identify_pet(crop_obj, class_label)
                     if pet_known:
                         track.identity_name = pet_name
@@ -153,7 +227,7 @@ class CameraTrackerManager:
                         track.match_confidence = pet_conf
                         logger.info(f"🐾 Pet reconhecido em {self.camera_name}: {pet_name} ({int(pet_conf * 100)}%)")
 
-            # Atualiza informações de identidade no objeto de detecção para exibição no vídeo
+            # Atualiza informações de identidade no objeto de detecção
             det["person_name"] = track.identity_name
             det["is_known"] = track.is_known
             det["face_confidence"] = track.match_confidence
@@ -162,7 +236,7 @@ class CameraTrackerManager:
         # Gera o frame anotado com as cores e nomes correspondentes
         annotated_frame = detector_engine.draw_annotations(raw_frame, detections)
 
-        # Registro de Eventos e Evidências
+        # --- Verificação de Disparo de Alertas e Registro no SQLite ---
         for det in detections:
             tid = det.get("tracking_id")
             if tid is None:
@@ -172,9 +246,27 @@ class CameraTrackerManager:
             if not track:
                 continue
 
-            # Confirmar presença por mais de 2 frames consecutivos antes de registrar
-            if track.consecutive_frames >= 2 and not track.event_triggered:
+            # Chave de Cooldown por câmera + tipo + identidade
+            cooldown_key = f"{self.camera_id}_{track.entity_type}_{track.identity_name}"
+            last_alert = self.last_alert_time.get(cooldown_key, 0.0)
+            elapsed_since_last_alert = now - last_alert
+
+            # Critérios estritos para evitar repetições:
+            # 1. Deve ser estável (>= settings.min_consecutive_frames)
+            # 2. Não deve ter disparado ainda neste rastro
+            if track.consecutive_frames >= settings.min_consecutive_frames and not track.event_triggered:
                 track.event_triggered = True
+
+                # Se já alertou recentemente essa mesma pessoa/entidade nesta câmera, suprime duplicidade
+                if elapsed_since_last_alert < settings.alert_cooldown_seconds:
+                    logger.debug(
+                        f"⏳ Alerta suprimido por cooldown ({int(elapsed_since_last_alert)}s / {settings.alert_cooldown_seconds}s): "
+                        f"{self.camera_name} - {track.identity_name}"
+                    )
+                    continue
+
+                # Registra o novo alerta e atualiza timestamp de cooldown
+                self.last_alert_time[cooldown_key] = now
 
                 event_id = f"evt_{uuid.uuid4().hex[:12]}"
                 timestamp_str = datetime.now().isoformat()
@@ -190,7 +282,7 @@ class CameraTrackerManager:
                 crop_path = str(events_dir / crop_filename)
                 full_path = str(events_dir / full_filename)
 
-                # Salvar imagens de evidência
+                # Salva recortes de evidência
                 crop_img = self._extract_crop(raw_frame, track.best_bbox or det["bbox"], margin_pct=0.10)
                 cv2.imwrite(crop_path, crop_img, [cv2.IMWRITE_JPEG_QUALITY, 90])
                 cv2.imwrite(full_path, annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
@@ -211,13 +303,13 @@ class CameraTrackerManager:
                     "license_plate": track.license_plate
                 }
 
-                # Persistência assíncrona no SQLite (funciona mesmo com navegador fechado)
+                # Persistência assíncrona no SQLite (24/7 autônomo)
                 await db.save_event(event_record)
 
                 category_icons = {"person": "👤", "vehicle": "🚗", "pet": "🐾"}
                 icon = category_icons.get(track.entity_type, "🎯")
                 logger.info(
-                    f"{icon} Evento registrado: {self.camera_name} - {track.identity_name} "
+                    f"{icon} Alerta registrado: {self.camera_name} - {track.identity_name} "
                     f"(ID #{tid}) -> {crop_filename}"
                 )
 

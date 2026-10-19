@@ -38,9 +38,11 @@ class Settings(BaseSettings):
     events_dir: str = Field(default="data/events", alias="EVENTS_DIR")
     db_path: str = Field(default="data/events.db", alias="DB_PATH")
 
-    # Parâmetros de Inferência
+    # Parâmetros de Inferência e Anti-Duplicação
     confidence_threshold: float = Field(default=0.65, alias="CONFIDENCE_THRESHOLD")
     iou_threshold: float = Field(default=0.45, alias="IOU_THRESHOLD")
+    alert_cooldown_seconds: float = Field(default=45.0, alias="ALERT_COOLDOWN_SECONDS")
+    min_consecutive_frames: int = Field(default=6, alias="MIN_CONSECUTIVE_FRAMES")
 
     def resolve_device(self) -> str:
         """
