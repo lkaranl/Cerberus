@@ -66,7 +66,6 @@ class YOLODetectorEngine:
                 conf=conf,
                 iou=iou,
                 device=self.device,
-                half=self.use_half,
                 verbose=False
             )
         except Exception as e:

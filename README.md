@@ -87,3 +87,54 @@ As configurações podem ser definidas via `.env` ou variáveis de ambiente:
 ### WebSockets
 - `WS /ws/stream/{camera_id}`: Stream contínuo de frames JPEG binários.
 - `WS /ws/events`: Canal de notificações instantâneas de novas pessoas detectadas.
+
+---
+
+## 🚀 Como Usar Pela Primeira Vez (Execução Nativa no Linux)
+
+### 1. Instalar Pré-requisitos do Sistema
+No Nobara / Fedora Linux, garanta a presença do FFmpeg e bibliotecas de desenvolvimento do Python:
+```bash
+sudo dnf install -y ffmpeg python3-devel
+```
+
+### 2. Criar e Ativar o Ambiente Virtual
+No diretório raiz do projeto:
+```bash
+python3 -m venv .venv
+
+# Se você usa Bash ou Zsh:
+source .venv/bin/activate
+
+# Se você usa Fish Shell:
+source .venv/bin/activate.fish
+```
+
+### 3. Instalar as Dependências
+Com o ambiente virtual ativado:
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Validar o Reconhecimento da GPU NVIDIA
+Execute este comando de teste para confirmar que o PyTorch se conecta com a GTX 1660 via CUDA:
+```bash
+python3 -c "import torch; print('CUDA Disponível:', torch.cuda.is_available(), '| GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'N/A')"
+```
+
+### 5. Configurar o Arquivo de Ambiente
+Gere o arquivo `.env` a partir do modelo padrão:
+```bash
+cp .env.example .env
+```
+
+### 6. Iniciar a Aplicação
+Com o ambiente virtual ativo:
+```bash
+python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8095
+```
+
+### 7. Acessar o Painel Web
+Abra o navegador no endereço:
+- No próprio servidor: `http://localhost:8095`
+- A partir de outro computador na rede local: `http://<ip-do-servidor>:8095`
