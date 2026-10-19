@@ -17,15 +17,10 @@ CREATE TABLE IF NOT EXISTS events (
     confidence REAL NOT NULL,
     crop_path TEXT NOT NULL,
     full_path TEXT NOT NULL,
-    person_name TEXT DEFAULT 'Desconhecido',
-    is_known BOOLEAN DEFAULT 0,
-    face_confidence REAL DEFAULT 0.0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_events_camera_id ON events (camera_id);
 CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events (timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_events_person_name ON events (person_name);
-CREATE INDEX IF NOT EXISTS idx_events_is_known ON events (is_known);
 """
 
 class Database:
@@ -39,12 +34,13 @@ class Database:
         return conn
 
     def init_db(self) -> None:
-        """Inicializa as tabelas e aplica migrações incrementais."""
+        """Inicializa as tabelas e aplica migrações incrementais de forma segura."""
         try:
             with self._get_connection() as conn:
+                # 1. Garante que a tabela básica existe
                 conn.executescript(CREATE_TABLE_SQL)
 
-                # Migração suave para instâncias já criadas
+                # 2. Migra colunas adicionais com segurança
                 cursor = conn.cursor()
                 cursor.execute("PRAGMA table_info(events)")
                 existing_cols = [row["name"] for row in cursor.fetchall()]
@@ -55,6 +51,13 @@ class Database:
                     conn.execute("ALTER TABLE events ADD COLUMN is_known BOOLEAN DEFAULT 0")
                 if "face_confidence" not in existing_cols:
                     conn.execute("ALTER TABLE events ADD COLUMN face_confidence REAL DEFAULT 0.0")
+
+                conn.commit()
+
+                # 3. Cria índices sobre as colunas migradas
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_events_person_name ON events (person_name)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_events_is_known ON events (is_known)")
+                conn.commit()
 
             logger.info(f"Banco de dados SQLite pronto em: {self.db_path}")
         except Exception as e:
