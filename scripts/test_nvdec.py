@@ -187,7 +187,7 @@ def test_camera_stream():
         print(f"⚠️ Erro ao testar CAP_PROP_HW_ACCELERATION: {e_prop}")
 
     # Teste 3: FFmpeg Nativo Pipe NVDEC
-    print("\n--- Teste C: FFmpeg Nativo com NVDEC (Pipe Subprocess) ---")
+    print("\n--- Teste C: FFmpeg Nativo com NVDEC (Pipe Subprocess - Resolução Nativa) ---")
     ffmpeg_bin = shutil.which("ffmpeg")
     if ffmpeg_bin:
         w, h = 1920, 1080
@@ -222,7 +222,7 @@ def test_camera_stream():
                     break
             elapsed_pipe = time.time() - t_pipe_start
             fps_pipe = frames_pipe / elapsed_pipe if elapsed_pipe > 0 else 0
-            print(f"✓ FFmpeg NVDEC Pipe: {frames_pipe} frames ({w}x{h}) em {elapsed_pipe:.2f}s ({fps_pipe:.1f} FPS) [{gpu_stat_pipe if 'gpu_stat_pipe' in locals() else 'N/A'}]")
+            print(f"✓ FFmpeg NVDEC Pipe ({w}x{h}): {frames_pipe} frames em {elapsed_pipe:.2f}s ({fps_pipe:.1f} FPS) [{gpu_stat_pipe if 'gpu_stat_pipe' in locals() else 'N/A'}]")
         except Exception as pe:
             print(f"⚠️ Teste FFmpeg Pipe falhou: {pe}")
         finally:
@@ -230,6 +230,50 @@ def test_camera_stream():
                 try:
                     p.kill()
                     p.wait(timeout=1)
+                except Exception:
+                    pass
+
+    # Teste 3.1: FFmpeg Nativo com NVDEC + Otimização de Largura (1280px para IA/Web)
+    print("\n--- Teste C.2: FFmpeg Nativo com NVDEC (Pipe Otimizado 1280px) ---")
+    if ffmpeg_bin:
+        target_w, target_h = 1280, 720
+        frame_bytes_1280 = target_w * target_h * 3
+        cmd_1280 = [
+            ffmpeg_bin,
+            "-nostdin",
+            "-loglevel", "error",
+            "-hwaccel", "cuda",
+            "-hwaccel_device", "0",
+            "-rtsp_transport", "tcp",
+            "-i", rtsp_url,
+            "-vf", f"scale={target_w}:{target_h}",
+            "-f", "rawvideo",
+            "-pix_fmt", "bgr24",
+            "-"
+        ]
+        p1280 = None
+        try:
+            p1280 = subprocess.Popen(cmd_1280, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=frame_bytes_1280 * 2)
+            frames_1280 = 0
+            t_1280_start = time.time()
+            for i in range(60):
+                raw = p1280.stdout.read(frame_bytes_1280)
+                if len(raw) == frame_bytes_1280:
+                    frames_1280 += 1
+                    if i == 30:
+                        gpu_stat_1280 = get_gpu_decoder_utilization()
+                else:
+                    break
+            elapsed_1280 = time.time() - t_1280_start
+            fps_1280 = frames_1280 / elapsed_1280 if elapsed_1280 > 0 else 0
+            print(f"✓ FFmpeg NVDEC Pipe (1280x720): {frames_1280} frames em {elapsed_1280:.2f}s ({fps_1280:.1f} FPS) [{gpu_stat_1280 if 'gpu_stat_1280' in locals() else 'N/A'}]")
+        except Exception as pe:
+            print(f"⚠️ Teste FFmpeg Pipe 1280 falhou: {pe}")
+        finally:
+            if p1280 is not None:
+                try:
+                    p1280.kill()
+                    p1280.wait(timeout=1)
                 except Exception:
                     pass
 
