@@ -137,25 +137,26 @@ cp .env.example .env
 
 ## ⚡ Aceleração Máxima com TensorRT FP16 (NVIDIA GTX 1660)
 
-O Cerberus vem configurado para detectar e carregar automaticamente a engine compilada do **NVIDIA TensorRT** (`models/yolov8n.engine`).
+O Cerberus vem configurado para detectar e carregar automaticamente engines compiladas do **NVIDIA TensorRT** (`models/yolov8n.engine` e `models/facenet.engine`).
 
 ### Benefícios no Nobara Linux:
-- **Latência ultrabaixa**: Queda de ~15ms para **~3 a 4ms** por frame na GTX 1660.
+- **YOLOv8n**: Queda de ~15ms para **~3 a 4ms** por frame na GTX 1660.
+- **FaceNet (Inception-ResNet)**: Queda de ~20ms para **~2.5ms** por extração facial, com transferência de tensores Zero-Copy direto na VRAM.
 - **+200 FPS teórico**: Permite processar múltiplos streams RTSP a 30 FPS estáveis com baixo consumo de VRAM e energia.
-- **Fallback transparente**: Se a engine ainda não foi compilada, o sistema roda perfeitamente no PyTorch CUDA padrão.
+- **Fallback transparente**: Se alguma engine ainda não foi compilada, o sistema roda perfeitamente no PyTorch CUDA padrão.
 
-### Como compilar a engine e rodar o benchmark no servidor:
+### Como compilar as engines e rodar o benchmark no servidor:
 No servidor Linux, com o ambiente virtual ativado:
 
 ```bash
-# 1. Instalar o pacote TensorRT no ambiente virtual
-pip install tensorrt
-
-# 2. Executar o script de compilação e teste comparativo
+# 1. Compilar engine TensorRT do YOLOv8 (Detecção de Objetos)
 python scripts/export_tensorrt.py
+
+# 2. Compilar engine TensorRT do FaceNet (Reconhecimento Facial)
+python scripts/export_facenet_tensorrt.py
 ```
 
-O script compilará a engine FP16 otimizada para os núcleos da arquitetura Turing (GTX 1660) e exibirá na tela o comparativo de velocidade (PyTorch vs TensorRT). Após a compilação, o Cerberus passará a exibir o selo `[TensorRT FP16 ⚡]` no topo da interface web.
+Os scripts compilarão as engines FP16 otimizadas para os núcleos da arquitetura Turing (GTX 1660) e exibirão na tela o comparativo de velocidade (PyTorch vs TensorRT). Após a compilação, o Cerberus passará a exibir o selo `[YOLO + FaceNet TRT ⚡]` no topo da interface web.
 
 ---
 

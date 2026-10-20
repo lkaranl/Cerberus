@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     # Aceleração Máxima TensorRT (NVIDIA CUDA)
     use_tensorrt: bool = Field(default=True, alias="USE_TENSORRT")
     engine_path: str = Field(default="models/yolov8n.engine", alias="ENGINE_PATH")
+    facenet_engine_path: str = Field(default="models/facenet.engine", alias="FACENET_ENGINE_PATH")
 
     # Otimização para Clientes Fracos / Leves (Server-Side Downscaling do Stream)
     stream_max_width: int = Field(default=960, alias="STREAM_MAX_WIDTH")

@@ -126,18 +126,29 @@ async def get_system_stats():
 
     try:
         from app.detector.engine import detector_engine
+        from app.detector.recognizer import face_recognizer
         import torch
         if torch.cuda.is_available():
             dev_name = torch.cuda.get_device_name(0)
             mem_alloc = round(torch.cuda.memory_allocated(0) / 1024**2, 2)
             mem_res = round(torch.cuda.memory_reserved(0) / 1024**2, 2)
             total_mem = round(torch.cuda.get_device_properties(0).total_memory / 1024**2, 2)
-            backend_label = "NVIDIA CUDA (TensorRT FP16 ⚡)" if detector_engine.using_tensorrt else "NVIDIA CUDA"
+
+            trt_active = detector_engine.using_tensorrt or face_recognizer.using_tensorrt
+            if detector_engine.using_tensorrt and face_recognizer.using_tensorrt:
+                backend_label = "NVIDIA CUDA (YOLO + FaceNet TensorRT FP16 ⚡)"
+            elif detector_engine.using_tensorrt:
+                backend_label = "NVIDIA CUDA (YOLO TensorRT FP16 ⚡)"
+            else:
+                backend_label = "NVIDIA CUDA"
+
             gpu_info = {
                 "device": device,
                 "type": backend_label,
                 "name": dev_name,
-                "tensorrt_active": detector_engine.using_tensorrt,
+                "tensorrt_active": trt_active,
+                "yolo_tensorrt": detector_engine.using_tensorrt,
+                "facenet_tensorrt": face_recognizer.using_tensorrt,
                 "model_format": "TensorRT .engine" if detector_engine.using_tensorrt else "PyTorch .pt",
                 "allocated_mb": mem_alloc,
                 "reserved_mb": mem_res,
@@ -149,6 +160,8 @@ async def get_system_stats():
                 "type": "Apple Silicon Metal (MPS)",
                 "name": "Apple M4 / Metal",
                 "tensorrt_active": False,
+                "yolo_tensorrt": False,
+                "facenet_tensorrt": False,
                 "model_format": "PyTorch .pt"
             }
     except Exception:

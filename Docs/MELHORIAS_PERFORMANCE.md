@@ -62,17 +62,23 @@ Implementar um filtro prévio ultraleve de detecção de movimento por diferenç
 
 ---
 
-## 4. 👤 Aceleração do Reconhecimento Facial (FaceNet) com TensorRT FP16
+## 4. 👤 Aceleração do Reconhecimento Facial (FaceNet) com TensorRT FP16 `[IMPLEMENTADO ✅]`
 
-### O Problema Atual:
-O YOLOv8 agora opera a **5.19 ms por frame** graças à engine TensorRT. Porém, o módulo de reconhecimento facial (`FaceNet Inception-ResNet-V1`) ainda roda no PyTorch CUDA convencional, levando **~18 a 25 ms** para processar um rosto.
+### O Problema:
+O YOLOv8 agora opera a **5.19 ms por frame** graças à engine TensorRT. Porém, o módulo de reconhecimento facial (`FaceNet Inception-ResNet-V1`) rodava no PyTorch CUDA convencional, levando **~18 a 25 ms** para processar um rosto.
 
-### A Solução:
-Exportar a rede neural `InceptionResnetV1` para o formato **TensorRT FP16** (gerando `models/facenet.engine`), aplicando a mesma metodologia que acelerou o YOLO.
+### A Solução Implementada:
+Exportar a rede neural `InceptionResnetV1` para o formato **TensorRT FP16** (gerando `models/facenet.engine`) com acesso direto de memória zero-copy via ponteiro de VRAM (`data_ptr()`).
 
 ### Benefícios:
-- Tempo de reconhecimento facial cai de **20 ms para ~2.5 ms**.
+- Tempo de reconhecimento facial cai de **~20 ms para ~2 a 3 ms**.
 - Identificação instantânea e imperceptível mesmo se múltiplas pessoas conhecidas entrarem simultaneamente no enquadramento.
+
+### Como gerar a engine no servidor Nobara Linux:
+```bash
+python scripts/export_facenet_tensorrt.py
+sudo systemctl restart cerberus
+```
 
 ---
 

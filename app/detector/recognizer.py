@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Any
 import cv2
 import numpy as np
 
@@ -19,13 +19,17 @@ class FaceRecognizer:
         self.device = settings.resolve_device()
         self.known_embeddings: Dict[str, Any] = {} # nome -> tensor de embedding médio
         self.is_ready = False
+        self.using_tensorrt = False
 
         self.mtcnn = None
         self.resnet = None
         self.torch = None
+        self.trt_runtime = None
+        self.trt_engine = None
+        self.trt_context = None
 
     def initialize(self) -> bool:
-        """Inicializa os modelos de detecção e extração facial em GPU/CPU."""
+        """Inicializa os modelos de detecção e extração facial em GPU/CPU com suporte a TensorRT."""
         try:
             import torch
             from facenet_pytorch import MTCNN, InceptionResnetV1
@@ -40,9 +44,31 @@ class FaceRecognizer:
                 select_largest=True,
                 device=self.device
             )
-            # Modelo de extração de embeddings (512 dimensões)
+            # Modelo PyTorch de extração de embeddings (512 dimensões)
             self.resnet = InceptionResnetV1(pretrained="vggface2").eval().to(self.device)
             self.is_ready = True
+
+            # Tenta carregar a engine TensorRT compilada (FP16 nativa)
+            engine_path = Path(settings.facenet_engine_path)
+            if settings.use_tensorrt and engine_path.exists() and self.device.startswith("cuda"):
+                try:
+                    import tensorrt as trt
+                    logger.info(f"⚡ Carregando FaceNet com aceleração TensorRT FP16 [{engine_path}]...")
+                    self.trt_runtime = trt.Runtime(trt.Logger(trt.Logger.WARNING))
+                    with open(engine_path, "rb") as f:
+                        self.trt_engine = self.trt_runtime.deserialize_cuda_engine(f.read())
+                    self.trt_context = self.trt_engine.create_execution_context()
+                    self.using_tensorrt = True
+                    logger.info("🚀 FaceNet TensorRT FP16 carregado com sucesso na GPU GTX 1660.")
+                except Exception as trt_err:
+                    logger.warning(f"Falha ao inicializar FaceNet TensorRT ({trt_err}). Revertendo para PyTorch CUDA.")
+                    self.using_tensorrt = False
+            elif self.device.startswith("cuda") and settings.use_tensorrt and not engine_path.exists():
+                logger.info(
+                    "💡 Dica de Desempenho FaceNet: Para acelerar o reconhecimento facial para ~2ms, "
+                    "execute no servidor: python scripts/export_facenet_tensorrt.py"
+                )
+
             self.load_known_faces()
             return True
         except ImportError:
@@ -93,7 +119,7 @@ class FaceRecognizer:
                     if face_tensor is not None:
                         with self.torch.no_grad():
                             face_batch = face_tensor.unsqueeze(0).to(self.device)
-                            emb = self.resnet(face_batch)
+                            emb = self._extract_embedding(face_batch)
                             # Normaliza o vetor para comparação de cosseno
                             emb_norm = self.torch.nn.functional.normalize(emb, p=2, dim=1)
                             embeddings_list.append(emb_norm.squeeze(0))
@@ -111,6 +137,27 @@ class FaceRecognizer:
 
         logger.info(f"Carregamento concluído: {person_count} pessoas ({total_photos} fotos).")
         return person_count
+
+    def _extract_embedding(self, face_batch: Any) -> Any:
+        """
+        Extrai o embedding facial de 512 dimensões.
+        Utiliza TensorRT FP16 com ponteiros diretos de VRAM (zero-copy) quando disponível,
+        ou PyTorch InceptionResnetV1 como fallback transparente.
+        """
+        if self.using_tensorrt and self.trt_context is not None:
+            try:
+                batch_size = face_batch.shape[0]
+                output_tensor = self.torch.empty((batch_size, 512), dtype=self.torch.float32, device=self.device)
+                self.trt_context.set_input_shape("input", face_batch.shape)
+                self.trt_context.set_tensor_address("input", face_batch.data_ptr())
+                self.trt_context.set_tensor_address("embedding", output_tensor.data_ptr())
+                stream_ptr = self.torch.cuda.current_stream().cuda_stream
+                self.trt_context.execute_async_v3(stream_ptr)
+                return output_tensor
+            except Exception as trt_err:
+                logger.debug(f"Falha na inferência FaceNet TensorRT ({trt_err}), usando PyTorch fallback.")
+
+        return self.resnet(face_batch)
 
     def identify_person(self, frame_bgr: np.ndarray, bbox: Tuple[int, int, int, int]) -> Tuple[str, float, bool]:
         """
@@ -150,7 +197,7 @@ class FaceRecognizer:
 
             with self.torch.no_grad():
                 face_batch = face_tensor.unsqueeze(0).to(self.device)
-                probe_emb = self.resnet(face_batch)
+                probe_emb = self._extract_embedding(face_batch)
                 probe_norm = self.torch.nn.functional.normalize(probe_emb, p=2, dim=1).squeeze(0)
 
                 best_name = "Desconhecido"
