@@ -50,7 +50,7 @@ class PersonReID:
 
     def _download_model_if_needed(self) -> bool:
         """Garante a presença do arquivo ONNX do OSNet, realizando download automático se necessário."""
-        if self.model_path.exists() and self.model_path.stat().st_size > 1_000_000:
+        if self.model_path.exists() and self.model_path.stat().st_size > 500_000:
             return True
 
         self.model_path.parent.mkdir(parents=True, exist_ok=True)
@@ -69,7 +69,7 @@ class PersonReID:
                                 f.write(chunk)
                     
                     file_size = self.model_path.stat().st_size
-                    if file_size > 1_000_000:
+                    if file_size > 500_000:
                         logger.info(f"✅ Download do OSNet x0.25 concluído com sucesso ({file_size / 1024 / 1024:.2f} MB)!")
                         return True
                     else:
