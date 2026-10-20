@@ -4,7 +4,7 @@
     "name": "Câmera do Portão",
     "url": "rtsp://etbt:dx4ana@192.168.68.53:554/stream1",
     "active": true,
-    "confidence_threshold": 0.65,
+    "confidence_threshold": 0.40,
     "priority": true
   },
   {
@@ -12,7 +12,7 @@
     "name": "Câmera da Garagem",
     "url": "rtsp://afey:dm24t4@192.168.68.57:554/stream1",
     "active": true,
-    "confidence_threshold": 0.65,
+    "confidence_threshold": 0.40,
     "priority": false
   },
   {
@@ -20,7 +20,7 @@
     "name": "Câmera Área do Fundo",
     "url": "rtsp://wnsj:7kr3kw@192.168.68.56:554/stream1",
     "active": true,
-    "confidence_threshold": 0.65,
+    "confidence_threshold": 0.40,
     "priority": false
   }
 ]

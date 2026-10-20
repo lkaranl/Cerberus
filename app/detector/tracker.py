@@ -313,18 +313,25 @@ class CameraTrackerManager:
             if track.is_stationary:
                 self._update_parked_anchor(track, bbox)
 
-            # --- Identificação nos Primeiros Frames do Rastro ---
-            if not track.is_known and track.eval_count < 5:
+            # --- Identificação Contínua (não desiste nos primeiros frames se o alvo estiver de costas) ---
+            should_eval = not track.is_known and (track.eval_count < 3 or track.consecutive_frames % 2 == 0)
+            if should_eval:
                 track.eval_count += 1
                 crop_obj = self._extract_crop(raw_frame, bbox, margin_pct=0.05)
 
                 if entity_type == "person":
                     name, face_conf, is_known = face_recognizer.identify_person(raw_frame, bbox)
                     if is_known:
+                        was_unknown = not track.is_known
+                        had_alerted_unknown = track.event_triggered and "Desconhecido" in track.identity_name
                         track.identity_name = name
                         track.is_known = True
                         track.match_confidence = face_conf
                         logger.info(f"👤 Rosto identificado em {self.camera_name}: {name} ({int(face_conf * 100)}%)")
+                        if had_alerted_unknown:
+                            # Re-habilita disparo imediato para atualizar o painel com o nome do morador
+                            track.event_triggered = False
+                            track.needs_identity_upgrade = True
 
                 elif entity_type == "vehicle":
                     plate = plate_reader.read_plate(crop_obj)
@@ -333,21 +340,31 @@ class CameraTrackerManager:
 
                     v_name, v_conf, v_known, matched_plate = visual_matcher.identify_vehicle(crop_obj, track.license_plate)
                     if v_known:
+                        was_unknown = not track.is_known
+                        had_alerted_unknown = track.event_triggered and "Desconhecido" in track.identity_name
                         track.identity_name = v_name
                         track.is_known = True
                         track.match_confidence = v_conf
                         track.license_plate = matched_plate
                         logger.info(f"🚗 Veículo reconhecido em {self.camera_name}: {v_name}")
+                        if had_alerted_unknown:
+                            track.event_triggered = False
+                            track.needs_identity_upgrade = True
                     elif track.license_plate:
                         track.identity_name = f"{class_label} [{track.license_plate}]"
 
                 elif entity_type == "pet":
                     pet_name, pet_conf, pet_known = visual_matcher.identify_pet(crop_obj, class_label)
                     if pet_known:
+                        was_unknown = not track.is_known
+                        had_alerted_unknown = track.event_triggered and "Desconhecido" in track.identity_name
                         track.identity_name = pet_name
                         track.is_known = True
                         track.match_confidence = pet_conf
                         logger.info(f"🐾 Pet reconhecido em {self.camera_name}: {pet_name} ({int(pet_conf * 100)}%)")
+                        if had_alerted_unknown:
+                            track.event_triggered = False
+                            track.needs_identity_upgrade = True
 
             # Atualiza informações de identidade no objeto de detecção
             det["person_name"] = track.identity_name
@@ -429,16 +446,19 @@ class CameraTrackerManager:
             last_alert = self.last_alert_time.get(cooldown_key, 0.0)
             elapsed_since_last_alert = now - last_alert
 
+            is_upgrade = getattr(track, "needs_identity_upgrade", False)
+
             # Critérios estritos para evitar repetições:
             # 1. Deve ser estável (>= settings.min_consecutive_frames)
-            # 2. Não deve ter disparado ainda neste rastro
+            # 2. Não deve ter disparado ainda neste rastro (a menos que seja upgrade de identidade)
             if track.consecutive_frames >= settings.min_consecutive_frames and not track.event_triggered:
                 track.event_triggered = True
+                track.needs_identity_upgrade = False
                 if track.is_stationary:
                     self._update_parked_anchor(track, det["bbox"])
 
-                # Se já alertou recentemente essa mesma pessoa/entidade nesta câmera, suprime duplicidade
-                if elapsed_since_last_alert < settings.alert_cooldown_seconds:
+                # Se for upgrade de identidade (rosto reconhecido após ter sido visto de costas), fura o cooldown!
+                if not is_upgrade and elapsed_since_last_alert < settings.alert_cooldown_seconds:
                     logger.debug(
                         f"⏳ Alerta suprimido por cooldown ({int(elapsed_since_last_alert)}s / {settings.alert_cooldown_seconds}s): "
                         f"{self.camera_name} - {track.identity_name}"
