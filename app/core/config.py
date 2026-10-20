@@ -79,9 +79,9 @@ class Settings(BaseSettings):
     telegram_critical_bot_token: str = Field(default="", alias="TELEGRAM_CRITICAL_BOT_TOKEN")
     telegram_critical_chat_id: str = Field(default="", alias="TELEGRAM_CRITICAL_CHAT_ID")
 
-    # Módulo Edge VLM Local (Moondream2 - Visão Computacional Generativa 100% Offline na GPU)
+    # Módulo Edge VLM Local (SmolVLM-500M / Moondream2 - Visão Computacional Generativa 100% Offline na GPU)
     enable_edge_vlm: bool = Field(default=True, alias="ENABLE_EDGE_VLM")
-    edge_vlm_model: str = Field(default="vikhyatk/moondream2", alias="EDGE_VLM_MODEL")
+    edge_vlm_model: str = Field(default="HuggingFaceTB/SmolVLM-500M-Instruct", alias="EDGE_VLM_MODEL")
     edge_vlm_revision: str = Field(default="", alias="EDGE_VLM_REVISION")
 
     def resolve_device(self) -> str:

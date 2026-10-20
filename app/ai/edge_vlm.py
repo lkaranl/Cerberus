@@ -11,9 +11,12 @@ import torch
 from app.core.config import settings
 from app.core.logging import logger
 
+SMOLVLM_MODEL_ID = "HuggingFaceTB/SmolVLM-500M-Instruct"
+
 class EdgeVLM:
     """
-    Motor de Visão & Linguagem Local de Borda (Edge VLM - Moondream2 SOTA).
+    Motor de Visão & Linguagem Local de Borda (Edge VLM).
+    Suporta SmolVLM-500M-Instruct (ultra-leve, ~1.0 GB VRAM) e Moondream2 (~3.2 GB VRAM).
     Executa 100% offline diretamente na GPU local com quantização FP16,
     sem enviar frames ou imagens para serviços de terceiros ou nuvem.
     
@@ -31,12 +34,14 @@ class EdgeVLM:
         self.revision = revision
         self.device = settings.resolve_device()
         self.model = None
+        self.processor = None
         self.tokenizer = None
+        self.is_smolvlm = False
         self.is_ready = False
         self._initializing = False
 
     def initialize(self) -> bool:
-        """Carrega os pesos neurais do Moondream2 na GPU."""
+        """Carrega os pesos neurais do VLM na GPU com fallback inteligente contra OOM."""
         if not settings.enable_edge_vlm:
             return False
         if self.is_ready:
@@ -45,54 +50,77 @@ class EdgeVLM:
             return False
 
         self._initializing = True
+
+        # Tenta o modelo configurado; se der OOM, faz fallback automático para SmolVLM-500M
+        success = self._load_model(self.model_id, self.revision)
+        if not success and self.model_id != SMOLVLM_MODEL_ID:
+            logger.warning(
+                f"⚠️ Tentando fallback automático para VLM ultra-leve de 500M parâmetros [{SMOLVLM_MODEL_ID}]..."
+            )
+            success = self._load_model(SMOLVLM_MODEL_ID, revision="")
+            if success:
+                self.model_id = SMOLVLM_MODEL_ID
+
+        self.is_ready = success
+        self._initializing = False
+        return success
+
+    def _load_model(self, model_id: str, revision: str) -> bool:
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
         try:
-            from transformers import AutoModelForCausalLM, AutoTokenizer
-            logger.info(f"⚡ Carregando Edge VLM [{self.model_id}] em {self.device} (FP16)...")
-            t0 = time.time()
-
             torch_dtype = torch.float16 if "cuda" in self.device else torch.float32
+            t0 = time.time()
+            logger.info(f"⚡ Carregando Edge VLM [{model_id}] em {self.device} (FP16)...")
 
-            model_kwargs = {
-                "trust_remote_code": True,
-                "torch_dtype": torch_dtype
-            }
-            tokenizer_kwargs = {"trust_remote_code": True}
+            if "smolvlm" in model_id.lower():
+                from transformers import AutoProcessor, AutoModelForVision2Seq
+                self.processor = AutoProcessor.from_pretrained(model_id)
+                self.model = AutoModelForVision2Seq.from_pretrained(
+                    model_id,
+                    torch_dtype=torch_dtype
+                )
+                self.model.to(self.device)
+                self.model.eval()
+                self.is_smolvlm = True
+                logger.info(f"🚀 Edge VLM (SmolVLM-500M) pronto em {time.time() - t0:.1f}s na GPU!")
+                return True
+            else:
+                from transformers import AutoModelForCausalLM, AutoTokenizer
+                tokenizer_kwargs = {"trust_remote_code": True}
+                model_kwargs = {"trust_remote_code": True, "torch_dtype": torch_dtype}
 
-            if self.revision and self.revision.strip():
-                model_kwargs["revision"] = self.revision.strip()
-                tokenizer_kwargs["revision"] = self.revision.strip()
+                if revision and revision.strip():
+                    tokenizer_kwargs["revision"] = revision.strip()
+                    model_kwargs["revision"] = revision.strip()
 
-            try:
-                self.tokenizer = AutoTokenizer.from_pretrained(self.model_id, **tokenizer_kwargs)
-                self.model = AutoModelForCausalLM.from_pretrained(self.model_id, **model_kwargs)
-            except Exception as load_err:
-                # Se a revisão falhar, tenta carregar sem revisão
-                if "revision" in model_kwargs:
-                    logger.warning(f"Revisão '{self.revision}' falhou ({load_err}). Carregando branch principal...")
-                    model_kwargs.pop("revision", None)
-                    tokenizer_kwargs.pop("revision", None)
-                    self.tokenizer = AutoTokenizer.from_pretrained(self.model_id, **tokenizer_kwargs)
-                    self.model = AutoModelForCausalLM.from_pretrained(self.model_id, **model_kwargs)
-                else:
-                    raise load_err
+                try:
+                    self.tokenizer = AutoTokenizer.from_pretrained(model_id, **tokenizer_kwargs)
+                    self.model = AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
+                except Exception as load_err:
+                    if "revision" in model_kwargs:
+                        logger.warning(f"Revisão '{revision}' falhou. Tentando branch principal...")
+                        tokenizer_kwargs.pop("revision", None)
+                        model_kwargs.pop("revision", None)
+                        self.tokenizer = AutoTokenizer.from_pretrained(model_id, **tokenizer_kwargs)
+                        self.model = AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
+                    else:
+                        raise load_err
 
-            # Aloca diretamente no hardware sem exigir a biblioteca 'accelerate'
-            self.model.to(self.device)
-            self.model.eval()
-            self.is_ready = True
-            self._initializing = False
-            logger.info(f"🚀 Edge VLM (Moondream2) pronto em {time.time() - t0:.1f}s na GPU!")
-            return True
+                self.model.to(self.device)
+                self.model.eval()
+                self.is_smolvlm = False
+                logger.info(f"🚀 Edge VLM (Moondream2) pronto em {time.time() - t0:.1f}s na GPU!")
+                return True
 
-        except ImportError:
-            logger.warning("Dependências do VLM não instaladas (transformers, einops, timm).")
-            self.is_ready = False
-            self._initializing = False
-            return False
-        except Exception as e:
-            logger.error(f"Erro ao inicializar Moondream2 Edge VLM: {e}")
-            self.is_ready = False
-            self._initializing = False
+        except (torch.cuda.OutOfMemoryError, Exception) as err:
+            logger.error(f"Erro ao carregar VLM [{model_id}]: {err}")
+            if self.model is not None:
+                del self.model
+                self.model = None
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
             return False
 
     def _prepare_image(self, image_input: Union[str, Path, np.ndarray, Image.Image]) -> Optional[Image.Image]:
@@ -117,10 +145,7 @@ class EdgeVLM:
         return None
 
     def caption(self, image_input: Union[str, Path, np.ndarray, Image.Image], length: str = "normal") -> Optional[str]:
-        """
-        Gera uma descrição textual em linguagem natural do que está visível na imagem.
-        length: 'short' ou 'normal'.
-        """
+        """Gera uma descrição textual em linguagem natural do que está visível na imagem."""
         if not self.is_ready and not self.initialize():
             return None
 
@@ -129,20 +154,21 @@ class EdgeVLM:
             return None
 
         try:
-            with torch.inference_mode():
-                # API Moondream moderna
-                if hasattr(self.model, "caption"):
-                    try:
-                        res = self.model.caption(pil_img, length=length)
-                        if isinstance(res, dict) and "caption" in res:
-                            return res["caption"].strip()
-                    except TypeError:
-                        res = self.model.caption(pil_img)
-                        if isinstance(res, dict) and "caption" in res:
-                            return res["caption"].strip()
-                
-                # Fallback via query direta
-                return self.query(pil_img, "Describe what you see in this image in detail.")
+            if self.is_smolvlm:
+                prompt_text = "Describe what you see in this security camera image in detail."
+                return self.query(pil_img, prompt_text)
+            else:
+                with torch.inference_mode():
+                    if hasattr(self.model, "caption"):
+                        try:
+                            res = self.model.caption(pil_img, length=length)
+                            if isinstance(res, dict) and "caption" in res:
+                                return res["caption"].strip()
+                        except TypeError:
+                            res = self.model.caption(pil_img)
+                            if isinstance(res, dict) and "caption" in res:
+                                return res["caption"].strip()
+                    return self.query(pil_img, "Describe what you see in this image in detail.")
         except Exception as e:
             logger.error(f"Erro ao gerar caption via Edge VLM: {e}")
             return None
@@ -164,18 +190,48 @@ class EdgeVLM:
 
         try:
             with torch.inference_mode():
-                # Moondream query API
-                if hasattr(self.model, "query"):
-                    res = self.model.query(pil_img, question)
-                    if isinstance(res, dict) and "answer" in res:
-                        return res["answer"].strip()
-                    elif isinstance(res, str):
-                        return res.strip()
+                # Rota SmolVLM
+                if self.is_smolvlm and self.processor is not None:
+                    # Redimensiona para resolução moderada para acelerar inferência
+                    w, h = pil_img.size
+                    if max(w, h) > 512:
+                        scale = 512.0 / max(w, h)
+                        pil_img = pil_img.resize((int(w * scale), int(h * scale)), Image.Resampling.BILINEAR)
 
-                # Moondream classic API
-                if hasattr(self.model, "encode_image") and hasattr(self.model, "answer_question"):
-                    enc_img = self.model.encode_image(pil_img)
-                    return self.model.answer_question(enc_img, question, self.tokenizer)
+                    messages = [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "image"},
+                                {"type": "text", "text": question}
+                            ]
+                        }
+                    ]
+                    prompt = self.processor.apply_chat_template(messages, add_generation_prompt=True)
+                    inputs = self.processor(text=prompt, images=[pil_img], return_tensors="pt").to(self.device)
+
+                    generated_ids = self.model.generate(**inputs, max_new_tokens=120, do_sample=False)
+                    raw_out = self.processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+
+                    # Limpa a resposta do chat
+                    if "Assistant:" in raw_out:
+                        return raw_out.split("Assistant:")[-1].strip()
+                    elif "\nAssistant" in raw_out:
+                        return raw_out.split("\nAssistant")[-1].strip(": \n")
+                    return raw_out.strip()
+
+                # Rota Moondream2
+                else:
+                    if hasattr(self.model, "query"):
+                        res = self.model.query(pil_img, question)
+                        if isinstance(res, dict) and "answer" in res:
+                            return res["answer"].strip()
+                        elif isinstance(res, str):
+                            return res.strip()
+
+                    if hasattr(self.model, "encode_image") and hasattr(self.model, "answer_question"):
+                        enc_img = self.model.encode_image(pil_img)
+                        return self.model.answer_question(enc_img, question, self.tokenizer)
 
         except Exception as e:
             logger.error(f"Erro ao executar query no Edge VLM: {e}")
@@ -188,7 +244,7 @@ class EdgeVLM:
     ) -> Dict[str, Any]:
         """
         Realiza uma auditoria visual completa de segurança sobre a evidência.
-        100% offline e privada.
+        100% offline e privada na GPU.
         """
         desc = self.caption(image_input, length="normal")
         if not desc:
@@ -199,7 +255,6 @@ class EdgeVLM:
                 "acao": "Manter monitoramento rotineiro."
             }
 
-        # Perguntas dirigidas ao VLM dependendo do tipo de alvo
         if entity_type == "person":
             q_threat = (
                 "Is the person in this image wearing a helmet, face mask, holding a tool, "
@@ -210,7 +265,6 @@ class EdgeVLM:
             q_wear = "What is the person wearing? Describe colors and clothing style."
             wear_details = self.query(image_input, q_wear) or ""
 
-            # Avaliação de risco baseada nos achados visuais
             lower_threat = threat_details.lower()
             is_suspicious = any(k in lower_threat for k in ["helmet", "mask", "tool", "weapon", "climbing", "suspicious", "pry", "backpack"])
 
@@ -221,7 +275,7 @@ class EdgeVLM:
                 "risco": "medio" if is_suspicious else "baixo",
                 "motivo": f"Auditoria visual local: {threat_details if is_suspicious else desc}",
                 "acao": "Verifique o vídeo ao vivo." if is_suspicious else "Monitoramento de rotina.",
-                "avaliador": "edge_vlm_moondream2"
+                "avaliador": f"edge_vlm_{'smolvlm' if self.is_smolvlm else 'moondream'}"
             }
 
         elif entity_type == "vehicle":
@@ -233,7 +287,7 @@ class EdgeVLM:
                 "risco": "baixo",
                 "motivo": f"Veículo identificado localmente: {veh_details}",
                 "acao": "Monitoramento padrão.",
-                "avaliador": "edge_vlm_moondream2"
+                "avaliador": f"edge_vlm_{'smolvlm' if self.is_smolvlm else 'moondream'}"
             }
 
         return {
@@ -241,7 +295,7 @@ class EdgeVLM:
             "risco": "baixo",
             "motivo": desc,
             "acao": "Nenhuma ação necessária.",
-            "avaliador": "edge_vlm_moondream2"
+            "avaliador": f"edge_vlm_{'smolvlm' if self.is_smolvlm else 'moondream'}"
         }
 
 

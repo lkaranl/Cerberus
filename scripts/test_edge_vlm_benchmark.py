@@ -33,20 +33,19 @@ def main():
         print(f"✓ GPU Dedicada: {gpu_name} (VRAM Total: {total_vram:.0f} MB)")
         print(f"✓ VRAM Alocada Inicial: {allocated_init:.1f} MB")
 
-    # 1. Carregamento do Moondream2 na GPU
-    print("\n[1/3] Inicializando Edge VLM (Moondream2 em FP16)...")
-    print(f"  -> Modelo: {edge_vlm.model_id} (Revisão: {edge_vlm.revision or 'padrão/main'})")
+    # 1. Carregamento do Edge VLM na GPU
+    print(f"\n[1/3] Inicializando Edge VLM ({edge_vlm.model_id} em FP16)...")
     
     t0 = time.time()
     ok = edge_vlm.initialize()
     if not ok:
-        print("❌ Falha ao carregar Moondream2. Verifique dependências ou conectividade.")
+        print("❌ Falha ao carregar Edge VLM. Verifique dependências ou conectividade.")
         return
 
     t_load = time.time() - t0
     vram_after_load = torch.cuda.memory_allocated(0) / (1024**2) if torch.cuda.is_available() else 0
-    print(f"✅ Moondream2 carregado em {t_load:.1f}s!")
-    print(f"💾 VRAM Utilizada pelo Modelo: {vram_after_load:.1f} MB")
+    print(f"✅ VLM ({edge_vlm.model_id}) carregado em {t_load:.1f}s!")
+    print(f"💾 VRAM Total Ocupada na GPU: {vram_after_load:.1f} MB")
 
     # 2. Localização de recortes reais de teste
     print("\n[2/3] Localizando imagens de eventos reais em 'data/events/'...")
