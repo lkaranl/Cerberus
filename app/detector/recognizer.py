@@ -36,10 +36,11 @@ class FaceRecognizer:
             self.torch = torch
 
             logger.info(f"Carregando FaceNet (InceptionResnetV1) no dispositivo: {self.device}...")
-            # MTCNN otimizado para sensibilidade a movimento e rostos angulados
+            # MTCNN otimizado para sensibilidade e alta velocidade na GPU
             self.mtcnn = MTCNN(
                 image_size=160,
                 margin=20,
+                min_face_size=32,
                 thresholds=[0.5, 0.6, 0.6],
                 keep_all=False,
                 select_largest=True,
@@ -48,6 +49,7 @@ class FaceRecognizer:
             # Modelo PyTorch de extração de embeddings (512 dimensões)
             self.resnet = InceptionResnetV1(pretrained="vggface2").eval().to(self.device)
             self.is_ready = True
+            self.cuda_stream = self.torch.cuda.Stream(device=self.device) if self.device.startswith("cuda") else None
 
             # Tenta carregar a engine TensorRT compilada (FP16 nativa)
             engine_path = Path(settings.facenet_engine_path)
@@ -152,8 +154,10 @@ class FaceRecognizer:
                 self.trt_context.set_input_shape("input", face_batch.shape)
                 self.trt_context.set_tensor_address("input", face_batch.data_ptr())
                 self.trt_context.set_tensor_address("embedding", output_tensor.data_ptr())
-                stream_ptr = self.torch.cuda.current_stream().cuda_stream
+                stream_ptr = self.cuda_stream.cuda_stream if self.cuda_stream else self.torch.cuda.current_stream().cuda_stream
                 self.trt_context.execute_async_v3(stream_ptr)
+                if self.cuda_stream:
+                    self.cuda_stream.synchronize()
                 return output_tensor
             except Exception as trt_err:
                 logger.debug(f"Falha na inferência FaceNet TensorRT ({trt_err}), usando PyTorch fallback.")
@@ -188,6 +192,14 @@ class FaceRecognizer:
         if head_crop_bgr.size == 0:
             return "Desconhecido", 0.0, False
 
+        # Pré-downscale adaptativo do recorte (max 200px):
+        # Acelera em 2x a rede P-Net do MTCNN ao evitar pirâmides de convolução pesadas em 2K
+        ch, cw = head_crop_bgr.shape[:2]
+        max_dim = 200
+        if max(ch, cw) > max_dim:
+            scale = max_dim / max(ch, cw)
+            head_crop_bgr = cv2.resize(head_crop_bgr, (int(cw * scale), int(ch * scale)), interpolation=cv2.INTER_LINEAR)
+
         try:
             head_crop_rgb = cv2.cvtColor(head_crop_bgr, cv2.COLOR_BGR2RGB)
             face_tensor = self.mtcnn(head_crop_rgb)
@@ -196,6 +208,10 @@ class FaceRecognizer:
             if face_tensor is None:
                 full_crop_bgr = frame_bgr[max(0, y1):min(h, y2), max(0, x1):min(w, x2)]
                 if full_crop_bgr.size > 0:
+                    fh, fw = full_crop_bgr.shape[:2]
+                    if max(fh, fw) > 240:
+                        s_f = 240.0 / max(fh, fw)
+                        full_crop_bgr = cv2.resize(full_crop_bgr, (int(fw * s_f), int(fh * s_f)), interpolation=cv2.INTER_LINEAR)
                     full_crop_rgb = cv2.cvtColor(full_crop_bgr, cv2.COLOR_BGR2RGB)
                     face_tensor = self.mtcnn(full_crop_rgb)
 
