@@ -1,175 +1,148 @@
-# 🤖 Propostas de Melhorias com Agente de IA (OpenRouter)
+# 🤖 Arquitetura do Agente de IA para o Cerberus (Sentinela Vision)
 
-Este documento reúne sugestões práticas e de alto valor agregado para integrar um **Agente de IA** ao **Cerberus (Sentinela Vision)** utilizando a **API da OpenRouter**.
+Este documento estabelece o roadmap completo de capacidades inteligentes para o **Cerberus**, integrando um **Agente Autônomo de IA (via OpenRouter)** com a infraestrutura local acelerada por GPU (NVIDIA GTX 1660 + TensorRT).
 
-> **Diretriz de Arquitetura**:
-> - **Baixo Consumo de Tokens**: Prompts enxutos, modelos rápidos e econômicos (ex: `google/gemini-2.5-flash`, `deepseek/deepseek-chat`, `meta-llama/llama-3.1-8b-instruct` ou `qwen/qwen-2.5-7b-instruct`).
-> - **Disparo por Evento (Event-Driven)**: A IA **nunca** processa frames contínuos a 30 FPS. As chamadas acontecem apenas em momentos-chave (ao registrar um alerta importante, no fechamento do dia ou quando o usuário fizer uma pergunta).
-> - **Privacidade e Eficiência**: O processamento pesado de visão computacional (YOLOv8, FaceNet e LPR) continua 100% local e gratuito na GPU. Apenas metadados em texto (ou um crop pontual) vão para a nuvem.
+> ### 🏛️ Princípios de Arquitetura:
+> 1. **Visão Pesada 100% Local**: Detecção (YOLOv8 FP16), Reconhecimento Facial (FaceNet FP16) e Rastreamento (ByteTrack) rodam na GPU local a 30 FPS sem gastar 1 centavo nem enviar streams para fora.
+> 2. **IA Contextual Sob Demanda (Event-Driven)**: O LLM/VLM só é acionado em momentos-chave, trabalhando em sua maioria com JSONs textuais ultracompactos (50 a 150 tokens).
+> 3. **Arquitetura de Dois Bots no Telegram**:
+>    - **Bot 1 (`@cerberus_karan_bot`)**: Feed Geral / Auditoria contínua (silencioso).
+>    - **Bot 2 (`@cerberus_critico_bot`)**: Alertas Críticos prioritários com som e diagnóstico da IA quando o risco é **Alto**.
+> 4. **Custo Quase Zero**: Modelos econômicos ou gratuitos (ex: `minimax/minimax-m3.1-flash:free`, `google/gemini-2.5-flash`, `deepseek/deepseek-chat`).
 
 ---
 
-## 1. 🛡️ Avaliador de Suspeição e Risco Contextual (Heurística Inteligente)
+## 1. 🛡️ Avaliador de Suspeição e Risco Contextual `[IMPLEMENTADO ✅]`
 
-### O Problema:
-Um alerta de "Pessoa Desconhecida" ao meio-dia na calçada é comum, mas o mesmo alerta às 03:15 da madrugada na câmera dos fundos é crítico.
+### O que é:
+Julgamento inteligente de ameaça cruzando horário, local da câmera, histórico de permanência e identificação biométrica.
+- *Exemplo*: Um desconhecido ao meio-dia na calçada é classificado como `risco: baixo`. O mesmo desconhecido às 03:22 nos fundos por 38 segundos é classificado como `risco: alto`.
 
-### Como o Agente Resolve:
-Quando um evento ocorre em condições de potencial risco, o backend envia um JSON compacto (~100 tokens):
-```json
-{
-  "camera": "Área do Fundo",
-  "horario": "03:22",
-  "tipo": "pessoa",
-  "identidade": "Desconhecido",
-  "tempo_na_cena_seg": 38,
-  "objetos_proximos": ["portao"]
-}
+### Fluxo Operacional:
+```mermaid
+graph LR
+    A[Câmera / YOLO / FaceNet] -->|Disparo de Evento| B(Tracker / Cerberus Backend)
+    B -->|JSON ~90 tokens| C[Avaliador OpenRouter]
+    C -->|Classificação JSON| D{Nível de Risco}
+    D -->|Baixo / Médio| E[Bot 1: Feed Geral Silencioso]
+    D -->|Alto / Crítico| F[Bot 2: Alerta com Som + Diagnóstico]
 ```
 
-- **Prompt do Sistema**: *"Você é um auditor de segurança residencial. Analise os metadados do evento e responda em JSON com nível de risco (baixo, medio, alto) e uma frase de ação."*
-- **Resposta do Agente** (~40 tokens):
-  ```json
-  {"risco": "alto", "motivo": "Permanência de desconhecido em área vulnerável durante a madrugada.", "acao": "Verificar câmeras imediatamente."}
-  ```
-- **Consumo**: ~150 tokens por alerta crítico.
-
 ---
 
-## 2. 💬 Chat / Assistente em Linguagem Natural sobre o Histórico
+## 2. 💬 Chat / Assistente em Linguagem Natural pelo Telegram (`/pergunta` ou Mensagem Direta)
 
 ### O Problema:
-Para saber se alguém esteve em casa, o usuário precisa rolar tabelas de histórico ou filtrar logs manualmente.
+Para auditar o que aconteceu no dia ou saber se alguém esteve em casa, o morador hoje precisa olhar logs manuais ou rolar dezenas de mensagens.
 
 ### Como o Agente Resolve:
-Adicionar um campo de busca/chat na interface web:
-- **Pergunta do Usuário**: *"O carteiro ou alguém de moto passou hoje de manhã?"*
-- **Fluxo do Sistema**:
-  1. O backend filtra no SQLite os eventos de hoje com tipo `vehicle` (moto) ou `person`.
-  2. Monta uma lista resumida em poucas linhas (~120 tokens).
-  3. O Agente sintetiza a resposta humana em 1 frase:
-     > *"Sim, uma moto foi detectada no Portão às 10:42 da manhã com permanência de 2 minutos."*
-- **Consumo**: ~200 tokens por pergunta feita pelo usuário.
+O morador conversa diretamente com o bot no Telegram como se estivesse falando com um porteiro ou segurança particular:
+- **Você pergunta no Telegram**:
+  - *"O carteiro ou alguém de moto passou hoje de manhã?"*
+  - *"A Ingrid já chegou em casa?"*
+  - *"Alguém veio no portão enquanto eu estava no trabalho?"*
+- **Fluxo do Agente**:
+  1. O bot intercepta o texto e consulta o SQLite (`SELECT * FROM events WHERE timestamp >= 'hoje'`).
+  2. Filtra os eventos relevantes e monta um prompt conciso com a lista estruturada (~150 tokens).
+  3. O LLM formula uma resposta humana direta em 1 frase:
+     > *"Sim, uma moto parou no portão às 10:42 da manhã por 2 minutos. A Ingrid chegou às 17:15 e seu carro já está na garagem."*
 
 ---
 
-## 3. 📋 Briefing Executivo Diário / Resumo de Segurança
+## 3. 📋 Briefing Executivo Diário / Resumo Noturno de Segurança
 
 ### O Problema:
-Centenas de eventos ao longo do dia geram fadiga de notificação.
+Centenas de eventos ao longo do dia geram fadiga de alerta. O morador precisa ter certeza de que o perímetro está seguro antes de dormir.
 
 ### Como o Agente Resolve:
-Uma vez ao dia (ex: 22h ou 07h da manhã), o sistema coleta os números agregados do banco de dados SQLite e solicita um resumo amigável:
-- **Entrada do Agente**:
-  ```text
-  Data: 19/10/2026. Total eventos: 42.
-  Karan detectado: 4x (chegada 18:15).
-  Meu Carro: estacionado desde 18:20.
-  Desconhecidos: 3 pedestres no portão (horários: 09:10, 14:30, 17:05).
-  Pets: Rex ativo às 08h e 16h.
-  Nenhum evento entre 00h e 06h.
-  ```
-- **Saída do Agente** (~60 tokens):
-  > *"Resumo do dia: Dia calmo com atividade externa concentrada no horário comercial. Seu carro estacionou às 18:20. Nenhuma movimentação anormal na madrugada."*
-- **Consumo**: ~150 tokens por dia (menos de R$ 0,01 por mês).
+O Cerberus agenda um relatório automático em horários estratégicos (ex: às **22:00** para fechamento ou às **07:00** como despertar de segurança):
+- **O Backend agrega**:
+  - Total de movimentações do dia.
+  - Horários de saída e chegada dos moradores conhecidos.
+  - Quantidade de desconhecidos que passaram na calçada.
+  - Tempo médio em que veículos ficaram estacionados na frente.
+- **Mensagem formatada enviada ao Telegram**:
+  > 📋 **Briefing de Segurança - 20/10/2026**
+  > • **Status Geral**: Perímetro calmo e seguro.
+  > • **Moradores**: Karan chegou às 18:15; Ingrid chegou às 17:10.
+  > • **Carro**: Estacionado na Garagem desde as 18:20 (Placa `NEC4J83` conferida).
+  > • **Visitantes**: 4 pedestres passaram pelo portão em horário comercial. Nenhuma permanência suspeita.
+  > • **Madrugada**: Zero movimentações nas áreas restritas (Fundos e Garagem).
 
 ---
 
-## 4. 📲 Enriquecimento de Notificações (Telegram / WhatsApp / Discord)
+## 4. 🕵️‍♂️ VLM sob Demanda para Tirar-Dúvidas Visuais (*Vision Language Model*)
 
 ### O Problema:
-Mensagens automáticas como `[ALERTA] cam-0 person id#12` são frias e não transmitem o contexto de relance.
+Às vezes o detector local aponta uma silhueta suspeita, uma sombra ou alguém carregando um objeto estranho à noite, e o morador quer saber o que a pessoa está fazendo ou vestindo.
 
 ### Como o Agente Resolve:
-O agente traduz os parâmetros técnicos para uma mensagem em linguagem natural e direta:
-- **Técnico**: `camera=Garagem, entity=vehicle, plate=NEC4J87, status=estacionado`
-- **Mensagem da IA**: *"🚗 Seu carro acabou de estacionar na Garagem."*
-- **Técnico**: `camera=Portao, entity=person, name=Desconhecido, time=11:30, duration=15s`
-- **Mensagem da IA**: *"👤 Uma pessoa desconhecida passou em frente ao Portão."*
-- **Consumo**: ~60 tokens por mensagem formatada.
+Ao lado de cada alerta ou através de um comando no Telegram (ex: respondendo à foto com `/analisar`):
+- O Cerberus envia a imagem do recorte (redimensionada para ~384px, ~20 KB) para um modelo multimodal econômico (`google/gemini-2.5-flash` ou `qwen/qwen-2.5-vl-7b-instruct`).
+- **Prompt do Sistema**: *"Você é um perito em segurança. Descreva suscintamente o que o indivíduo está vestindo, segurando e sua postura corporal."*
+- **Resposta do VLM**:
+  > *"Indivíduo vestindo casaco preto com capuz, calça jeans e segurando uma sacola plástica na mão direita. Postura de caminhada normal, sem ferramentas aparentes."*
 
 ---
 
-## 5. 🏷️ Categorização Semântica de Atividades
+## 5. 🏷️ Categorização Semântica de Atividades e Rastreamento de Encomendas
 
 ### O Problema:
-O detector sabe apenas as classes básicas ("Carro", "Pessoa", "Moto").
+O detector YOLO clássico só rotula objetos isolados (`person`, `motorcycle`, `car`). Ele não entende o contexto da ação.
 
 ### Como o Agente Resolve:
-Combinando 2 ou 3 detecções sequenciais com um prompt mínimo de classificação (`temperature: 0.1`):
-- `Moto` + `Pessoa com capacete/objeto` ➔ **"Provável Entrega / Delivery"**
-- `Carro conhecido` + `Pessoa saindo` ➔ **"Chegada em Casa"**
-- `Pessoa desconhecida` parada > 2 min ➔ **"Espera / Monitoramento"**
-- Essa etiqueta é salva no banco SQLite para buscas posteriores com zero custo computacional na GPU local.
+O Cerberus analisa sequências temporais de eventos e solicita ao Agente uma etiqueta de intenção:
+- `Moto` + `Pessoa com capacete/mochila` parando no portão ➔ Etiqueta: **"Entrega / Delivery / Motoboy"**
+- `Carro estranho` parado com motor ligado em frente à garagem > 1 minuto ➔ Etiqueta: **"Veículo em Espera / Bloqueio de Guia"**
+- `Pessoa desconhecida` tocando a grade do portão ➔ Etiqueta: **"Tentativa de Contato / Visita"**
+- Essas tags ficam salvas no banco de dados e permitem buscas como: *"Mostre todas as entregas desta semana"*.
 
 ---
 
-## 6. 👁️ VLM sob Demanda para Tirar-Dúvidas (Opcional / Alta Criticidade)
+## 6. 🧠 Co-Piloto de Calibração Autônoma de Sensibilidade (*Self-Tuning AI*)
 
 ### O Problema:
-Um objeto não identificado ou uma sombra gerou dúvida no detector YOLO durante a noite.
+Ajustar `confidence_threshold`, `iou_threshold` e `alert_cooldown_seconds` manualmente pode ser chato, resultando em falsos positivos (ex: vento balançando plantas ou reflexo de farol à noite).
 
 ### Como o Agente Resolve:
-Apenas quando o usuário clicar no botão *"Pedir Análise da IA"* no modal do dashboard:
-- O frontend redimensiona o recorte para 256x256 (JPEG leve de 15KB).
-- Envia via OpenRouter para um Vision Model econômico (`google/gemini-2.5-flash` ou `qwen/qwen-2.5-vl-7b-instruct`).
-- **Prompt**: *"Descreva o que há na imagem em 10 palavras focando em segurança."*
-- **Resposta**: *"Pessoa de casaco escuro segurando uma mochila próximo à grade."*
-- **Consumo**: Chamada 100% sob demanda manual do usuário.
+O agente monitora a taxa de eventos por hora de cada câmera:
+- Se uma câmera na garagem disparou 15 alertas em 10 minutos sem nenhuma detecção facial confirmada e com baixa confiança:
+  - O Agente diagnostica: *"A câmera da Garagem está sofrendo interferência de sombra/inseto."*
+  - Recomenda ou ajusta automaticamente a sensibilidade daquela câmera até o amanhecer, evitando spam desnecessário.
 
 ---
 
-## 7. 🚪 Detecção de Proximidade e Permanência no Portão (*Gate Loitering* & Zona Perimetral)
+## 7. 🚨 Protocolo de Resposta Ativa a Intrusão (*Defensive Actions*)
 
 ### O Problema:
-Pessoas passando pela rua ou na calçada oposta não representam ameaça e não devem gerar alertas nem gastar tokens. O perigo real ocorre quando alguém **se aproxima da grade/portão** e **permanece parado ali**.
+Apenas avisar o morador pelo celular às 03:00 da manhã pode não ser suficiente caso ele esteja em sono profundo.
 
-### Como Funciona a Solução em 2 Camadas (Sua Observação Precisa):
-
-#### Camada 1: Filtro Geométrico e Temporal Local (**Zero Tokens / 100% Gratuito na GPU**)
-- **Polígono de Proximidade (ROI)**: Desenhamos uma área virtual de 1 a 2 metros em frente ao portão na câmera `cam-0`.
-- **Filtro de Distância**:
-  - Se a pessoa está na rua ou longe da grade: **Ignorado**.
-  - Se a pessoa entra no raio de proximidade imediato do portão:
-    - O sistema local calcula o tempo de permanência (*loitering timer*).
-    - Se a pessoa for reconhecida pelo FaceNet local (Karan ou moradores): **Status Normal** (chegando ou saindo de casa).
-    - Se a pessoa for **Desconhecida** e permanecer parada no portão por mais de **10 a 15 segundos**: **Gatilho de Risco Disparado**.
-
-#### Camada 2: Agente de IA via OpenRouter (**Acionado Apenas no Gatilho Crítico**)
-Como a Camada 1 filtra 99% dos pedestres comuns sem gastar nenhum token, o Agente de IA só é acionado quando a situação realmente exige inteligência:
-- **Entrada enviada ao Agente** (~120 tokens):
-  ```json
-  {
-    "evento": "permanencia_no_portao",
-    "identidade": "Desconhecido",
-    "tempo_parado_segundos": 22,
-    "horario": "15:40",
-    "historico_recente": "Nenhum veiculo associado"
-  }
-  ```
-- **Ação do Agente**:
-  - Classifica a intenção: se é um comportamento típico de entrega, visitante aguardando ou atitude suspeita/sondagem.
-  - Gera um alerta com nível de urgência customizado para o morador:
-    > *"⚠️ Desconhecido parado em frente ao seu portão há mais de 20 segundos. Verifique o acesso."*
-- **Consumo**: ~150 tokens **apenas** quando alguém realmente ficar parado na sua grade.
+### Como o Agente Resolve:
+Em caso de `risco: alto` confirmado pela IA na madrugada:
+1. **Chamada de Alerta Telegram / Webhook**: Disparo de alerta contínuo que fura o modo "Não Perturbe" do smartphone.
+2. **Integração com Casa Inteligente (Home Assistant / MQTT)**:
+   - Acender instantaneamente os holofotes do quintal ou garagem para espantar o invasor.
+   - Disparar um sinal sonoro ou sintetizar voz no alto-falante: *"Atenção: Área monitorada por câmeras."*
 
 ---
 
-## 📊 Tabela de Estimativa de Consumo e Custos na OpenRouter
+## 📊 Matriz de Priorização das Próximas Implementações
 
-| Funcionalidade | Frequência Típica | Tokens Médios | Custo Mensal Estimado (Gemini Flash / Llama 8B) |
-| :--- | :--- | :--- | :--- |
-| **Permanência no Portão (*Loitering*)** | 2 a 5x por dia | ~150 tokens | < **R$ 0,10 / mês** |
-| **Resumo Diário Executivo** | 1x ao dia | ~200 tokens | < **R$ 0,05 / mês** |
-| **Análise de Risco na Madrugada** | 2 a 5x por noite | ~150 tokens | < **R$ 0,10 / mês** |
-| **Chat de Histórico (Dúvidas)** | 3 a 5 consultas/dia | ~250 tokens | < **R$ 0,15 / mês** |
-| **Notificações Humanizadas** | Eventos selecionados | ~80 tokens | < **R$ 0,20 / mês** |
-| **Total Estimado** | Operação 24/7 | Baixíssimo | **Inferior a R$ 1,20 / mês** |
+| Funcionalidade | Complexidade | Consumo de Tokens | Impacto no Dia a Dia |
+| :--- | :---: | :---: | :--- |
+| **1. Avaliador de Risco Contextual** | Baixa | ~100 tokens/alerta | **MÁXIMO** `[CONCLUÍDO ✅]` |
+| **2. Chat pelo Telegram (`/pergunta`)** | Média | ~180 tokens/pergunta | **ALTO** (Saber o histórico em segundos) |
+| **3. Resumo Diário / Noturno Automático** | Baixa | ~200 tokens/dia | **ALTO** (Paz de espírito antes de dormir) |
+| **4. VLM sob demanda (`/analisar`)** | Baixa | ~250 tokens/imagem | **MÉDIO** (Tirar dúvidas sobre pessoas suspeitas) |
+| **5. Categorização de Entregas / Delivery** | Média | ~80 tokens/evento | **MÉDIO** (Organização do histórico residencial) |
 
 ---
 
-## 🛠️ Próximos Passos Sugeridos para Implementação
-1. Adicionar `OPENROUTER_API_KEY` e `OPENROUTER_MODEL` no arquivo `.env`.
-2. Criar a demarcação de polígono perimetral do portão na configuração da câmera (`config/cameras.json`).
-3. Criar o cliente leve assíncrono em `app/agent/client.py` usando `httpx` para interagir com a OpenRouter.
-4. Conectar o gatilho de proximidade do portão ao avaliador de risco do Agente.
+## 💰 Estimativa de Custos Mensais na OpenRouter
+
+Com o modelo atual (`minimax/minimax-m3.1-flash:free`), o custo é **R$ 0,00**.
+Caso opte por modelos comerciais de altíssima velocidade como `google/gemini-2.5-flash` ou `deepseek/deepseek-chat`:
+- ~10 avaliações de risco por dia: **30.000 tokens/mês**
+- Resumo diário (1x ao dia): **6.000 tokens/mês**
+- Dúvidas e consultas esporádicas: **15.000 tokens/mês**
+- **Custo total estimado**: **Menos de R$ 0,50 por mês**.
