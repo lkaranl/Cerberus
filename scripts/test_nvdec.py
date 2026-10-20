@@ -157,13 +157,13 @@ def test_camera_stream():
     else:
         os.environ.pop("OPENCV_FFMPEG_CAPTURE_OPTIONS", None)
 
-    # Teste 2.1: OpenCV com parâmetros diretos CAP_PROP_HW_ACCELERATION
+    # Teste 2.1: OpenCV com parâmetros diretos CAP_PROP_HW_ACCELERATION (sem CAP_PROP_HW_DEVICE)
     print("\n--- Teste B.2: OpenCV com CAP_PROP_HW_ACCELERATION (VIDEO_ACCELERATION_ANY) ---")
     try:
         cap_hw_prop = cv2.VideoCapture(
             rtsp_url,
             cv2.CAP_FFMPEG,
-            [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_ANY, cv2.CAP_PROP_HW_DEVICE, 0]
+            [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_ANY]
         )
         cap_hw_prop.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         if cap_hw_prop.isOpened():
@@ -190,6 +190,11 @@ def test_camera_stream():
     print("\n--- Teste C: FFmpeg Nativo com NVDEC (Pipe Subprocess) ---")
     ffmpeg_bin = shutil.which("ffmpeg")
     if ffmpeg_bin:
+        w, h = 1920, 1080
+        if 'frame' in locals() and frame is not None:
+            h, w = frame.shape[:2]
+        frame_bytes_size = w * h * 3
+
         cmd = [
             ffmpeg_bin,
             "-nostdin",
@@ -202,27 +207,58 @@ def test_camera_stream():
             "-pix_fmt", "bgr24",
             "-"
         ]
+        p = None
         try:
-            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=10**7)
-            import numpy as np
-            # Lê primeiro frame para obter dimensões ou usar 1920x1080
-            w, h = frame.shape[1], frame.shape[0] if 'frame' in locals() and frame is not None else (1920, 1080)
-            frame_bytes_size = w * h * 3
+            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=frame_bytes_size * 2)
             frames_pipe = 0
             t_pipe_start = time.time()
-            for _ in range(60):
+            for i in range(60):
                 raw = p.stdout.read(frame_bytes_size)
                 if len(raw) == frame_bytes_size:
                     frames_pipe += 1
+                    if i == 30:
+                        gpu_stat_pipe = get_gpu_decoder_utilization()
                 else:
                     break
             elapsed_pipe = time.time() - t_pipe_start
-            p.terminate()
-            p.wait(timeout=2)
             fps_pipe = frames_pipe / elapsed_pipe if elapsed_pipe > 0 else 0
-            print(f"✓ FFmpeg NVDEC Pipe: {frames_pipe} frames ({w}x{h}) em {elapsed_pipe:.2f}s ({fps_pipe:.1f} FPS)")
+            print(f"✓ FFmpeg NVDEC Pipe: {frames_pipe} frames ({w}x{h}) em {elapsed_pipe:.2f}s ({fps_pipe:.1f} FPS) [{gpu_stat_pipe if 'gpu_stat_pipe' in locals() else 'N/A'}]")
         except Exception as pe:
             print(f"⚠️ Teste FFmpeg Pipe falhou: {pe}")
+        finally:
+            if p is not None:
+                try:
+                    p.kill()
+                    p.wait(timeout=1)
+                except Exception:
+                    pass
+
+    # Teste 4: Benchmark Direto do FFmpeg na linha de comando
+    print("\n--- Teste D: Benchmark Direto do FFmpeg (-hwaccel cuda -> null sink) ---")
+    if ffmpeg_bin:
+        try:
+            bench_cmd = [
+                ffmpeg_bin,
+                "-nostdin",
+                "-rtsp_transport", "tcp",
+                "-hwaccel", "cuda",
+                "-hwaccel_device", "0",
+                "-i", rtsp_url,
+                "-frames:v", "60",
+                "-f", "null",
+                "-",
+                "-benchmark"
+            ]
+            t_bench = time.time()
+            res = subprocess.run(bench_cmd, capture_output=True, text=True, timeout=10)
+            elapsed_bench = time.time() - t_bench
+            gpu_bench = get_gpu_decoder_utilization()
+            stderr_lines = [l for l in res.stderr.splitlines() if "bench:" in l or "frame=" in l or "speed=" in l]
+            print(f"✓ FFmpeg Benchmark concluído em {elapsed_bench:.2f}s [{gpu_bench}]")
+            for l in stderr_lines[-3:]:
+                print(f"    • {l}")
+        except Exception as be:
+            print(f"⚠️ Benchmark FFmpeg falhou: {be}")
 
     print("\n" + "=" * 65)
     print("✓ Diagnóstico concluído com sucesso!")
