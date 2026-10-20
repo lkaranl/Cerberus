@@ -28,10 +28,12 @@ def main():
     else:
         print(f"  -> Status: {plate_reader.ocr_engine}")
 
-    visual_matcher.load_vehicles()
-    print("\nVeículos Cadastrados na Base:")
+    # Inicializa extrator visual e carrega veículos
+    print("\nInicializando base de veículos cadastrados...")
+    visual_matcher.initialize()
+    print("Veículos Cadastrados na Base:")
     for name, data in visual_matcher.known_vehicles.items():
-        print(f"  🚗 {name} — Placa Registrada: '{data['plate']}'")
+        print(f"  🚗 '{name}' — Placa Registrada: '{data.get('plate', '')}'")
 
     # 1. Teste na foto de referência cadastrada
     ref_image_path = "data/known_vehicles/Meu_Carro_[NEC4J83]/image.png"
@@ -41,19 +43,35 @@ def main():
         img = cv2.imread(ref_image_path)
         if img is not None:
             h, w = img.shape[:2]
+
+            # Inspeciona textos brutos encontrados pelo RapidOCR
+            if plate_reader.ocr_engine == "rapidocr" and plate_reader.rapid_ocr is not None:
+                # Se for maior que 1280px, redimensiona para testar velocidade
+                scale = 1280.0 / max(h, w) if max(h, w) > 1280 else 1.0
+                proc = cv2.resize(img, (0, 0), fx=scale, fy=scale, interpolation=cv2.INTER_AREA) if scale < 1.0 else img
+                raw_results, elapse = plate_reader.rapid_ocr(proc)
+                print(f"\n  [Diagnóstico RapidOCR] Textos detectados na imagem:")
+                if raw_results:
+                    for box, text, conf in raw_results:
+                        repaired = plate_reader.validate_and_repair_plate(text)
+                        print(f"    - Texto: '{text}' | Confiança: {conf:.2f} | Padrão Placa: {repaired}")
+                else:
+                    print("    (Nenhum texto detectado)")
+
             t0 = time.perf_counter()
             plate = plate_reader.read_plate(img)
             elapsed_ms = (time.perf_counter() - t0) * 1000
 
-            print(f"  Dimensões da Imagem: {w}x{h}")
-            print(f"  Tempo de Inferência: {elapsed_ms:.1f} ms")
-            print(f"  Placa Reconhecida:   '{plate}'")
-            if plate == "NEC4J83":
-                print("  Resultado:           ✅ SUCESSO ABSOLUTO (Placa Mercosul correta)")
-            elif plate:
-                print(f"  Resultado:           ⚠️ Leitura parcial ou divergente: '{plate}'")
+            v_name, conf, is_known, p_final = visual_matcher.identify_vehicle(img, plate)
+
+            print(f"\n  Dimensões da Imagem:  {w}x{h}")
+            print(f"  Tempo de Inferência:  {elapsed_ms:.1f} ms")
+            print(f"  Placa Reconhecida:    '{plate}'")
+            print(f"  Identificação Final:  {v_name} (confiança: {conf:.2f}, conhecido: {is_known})")
+            if is_known:
+                print("  Resultado:            ✅ SUCESSO ABSOLUTO (Veículo reconhecido)")
             else:
-                print("  Resultado:           ❌ Não identificada nesta foto")
+                print("  Resultado:            ❌ Não identificado como conhecido")
     else:
         print(f"\nFoto de referência não encontrada em {ref_image_path}")
 

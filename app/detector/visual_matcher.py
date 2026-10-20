@@ -266,8 +266,14 @@ class VisualEntityMatcher:
         # 1. Checagem por placa cadastrada
         if norm_detected_plate:
             for name, data in self.known_vehicles.items():
-                if data["plate"] and data["plate"] == norm_detected_plate:
-                    return f"{name} [{norm_detected_plate}]", 0.99, True, norm_detected_plate
+                known_plate = data.get("plate", "")
+                if known_plate:
+                    # Match exato de 7 caracteres
+                    if known_plate == norm_detected_plate:
+                        return f"{name} [{known_plate}]", 0.99, True, known_plate
+                    # Match de prefixo de 6 caracteres (caso o último dígito esteja cortado na borda)
+                    if len(norm_detected_plate) == 6 and known_plate.startswith(norm_detected_plate):
+                        return f"{name} [{known_plate}]", 0.98, True, known_plate
 
         # 2. Checagem visual por fusão de Deep Features + Histograma de Cor
         probe_emb = self._extract_embedding(crop_bgr)

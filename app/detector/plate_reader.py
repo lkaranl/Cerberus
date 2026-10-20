@@ -35,7 +35,6 @@ class PlateReader:
         # 1. Tenta RapidOCR (PP-OCRv4 SOTA via ONNX Runtime)
         try:
             from rapidocr_onnxruntime import RapidOCR
-            # RapidOCR seleciona automaticamente CUDAExecutionProvider se disponível
             self.rapid_ocr = RapidOCR()
             self.ocr_engine = "rapidocr"
             logger.info("⚡ Módulo LPR inicializado com PP-OCRv4 Neural SOTA (RapidOCR / ONNX Runtime).")
@@ -69,6 +68,7 @@ class PlateReader:
         """
         Valida e repara potenciais erros de confusão letra/número em placas brasileiras
         respeitando a sintaxe estrita do padrão Mercosul (LLL N L NN) e Tradicional (LLL NNNN).
+        Suporta placas completas (7 caracteres) e prefixos truncados na borda (6 caracteres).
         """
         if not raw_candidate:
             return None
@@ -76,36 +76,47 @@ class PlateReader:
         # Limpeza preliminar: remove caracteres não alfanuméricos e converte para maiúsculo
         clean = re.sub(r"[^A-Z0-9]", "", raw_candidate.upper().strip())
 
-        # Placas brasileiras têm exatamente 7 caracteres
-        if len(clean) != 7:
-            # Tenta encontrar substring de 7 caracteres compatível
-            match = self.mercosul_regex.search(clean) or self.tradicional_regex.search(clean)
-            if match:
-                clean = match.group(1).replace("-", "")
-            else:
-                return None
+        # Caso 1: Candidato tem exatamente 7 caracteres
+        if len(clean) == 7:
+            chars = list(clean)
+            # Regra 1: Posições 0, 1, 2 DEVEM ser letras
+            for i in range(3):
+                if chars[i].isdigit() and chars[i] in self._digit_to_char:
+                    chars[i] = self._digit_to_char[chars[i]]
+            # Regra 2: Posição 3 DEVE ser dígito numérico (0-9)
+            if chars[3].isalpha() and chars[3] in self._char_to_digit:
+                chars[3] = self._char_to_digit[chars[3]]
+            # Regra 3: Posições 5 e 6 DEVEM ser dígitos numéricos (0-9)
+            for i in (5, 6):
+                if chars[i].isalpha() and chars[i] in self._char_to_digit:
+                    chars[i] = self._char_to_digit[chars[i]]
 
-        chars = list(clean)
+            repaired = "".join(chars)
+            if self.mercosul_regex.fullmatch(repaired) or self.tradicional_regex.fullmatch(repaired):
+                return repaired
 
-        # Regra 1: Posições 0, 1, 2 DEVEM ser letras (tanto Mercosul quanto Tradicional)
-        for i in range(3):
-            if chars[i].isdigit() and chars[i] in self._digit_to_char:
-                chars[i] = self._digit_to_char[chars[i]]
+        # Caso 2: Candidato é maior que 7 caracteres (ex: texto concatenado 'BRASILNEC4J83')
+        elif len(clean) > 7:
+            for i in range(len(clean) - 6):
+                sub = clean[i:i+7]
+                res = self.validate_and_repair_plate(sub)
+                if res:
+                    return res
 
-        # Regra 2: Posição 3 DEVE ser dígito numérico (0-9)
-        if chars[3].isalpha() and chars[3] in self._char_to_digit:
-            chars[3] = self._char_to_digit[chars[3]]
+        # Caso 3: Candidato tem 6 caracteres (ex: último caractere parcialmente cortado na borda como 'NEC4J8')
+        elif len(clean) == 6:
+            chars = list(clean)
+            for i in range(3):
+                if chars[i].isdigit() and chars[i] in self._digit_to_char:
+                    chars[i] = self._digit_to_char[chars[i]]
+            if chars[3].isalpha() and chars[3] in self._char_to_digit:
+                chars[3] = self._char_to_digit[chars[3]]
+            if chars[5].isalpha() and chars[5] in self._char_to_digit:
+                chars[5] = self._char_to_digit[chars[5]]
 
-        # Regra 3: Posições 5 e 6 DEVEM ser dígitos numéricos (0-9)
-        for i in (5, 6):
-            if chars[i].isalpha() and chars[i] in self._char_to_digit:
-                chars[i] = self._char_to_digit[chars[i]]
-
-        repaired = "".join(chars)
-
-        # Validação final: verifica se atende à especificação Mercosul ou Tradicional
-        if self.mercosul_regex.fullmatch(repaired) or self.tradicional_regex.fullmatch(repaired):
-            return repaired
+            repaired = "".join(chars)
+            if re.match(r"^[A-Z]{3}[0-9][A-Z0-9][0-9]$", repaired):
+                return repaired
 
         return None
 
@@ -115,7 +126,16 @@ class PlateReader:
             return None
 
         try:
-            results, elapse = self.rapid_ocr(img_bgr)
+            h, w = img_bgr.shape[:2]
+            # Otimização de latência e resolução:
+            # Imagens 4K ou excessivamente grandes causam lentidão desnecessária e prejudicam o receptive field do DBNet
+            if max(h, w) > 1280:
+                scale = 1280.0 / float(max(h, w))
+                proc_img = cv2.resize(img_bgr, (0, 0), fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+            else:
+                proc_img = img_bgr
+
+            results, elapse = self.rapid_ocr(proc_img)
             if not results:
                 return None
 
@@ -123,16 +143,17 @@ class PlateReader:
             best_score = 0.0
 
             for item in results:
-                # Cada item no RapidOCR é: [dt_boxes, text, score]
                 if len(item) < 3:
                     continue
                 _box, text, score = item[0], item[1], float(item[2])
 
-                # Testa reparo e sintaxe de placa
                 plate = self.validate_and_repair_plate(text)
-                if plate and score > best_score:
-                    best_score = score
-                    best_plate = plate
+                if plate:
+                    # Prioridade para placas completas de 7 caracteres
+                    weight = score if len(plate) == 7 else score * 0.92
+                    if weight > best_score:
+                        best_score = weight
+                        best_plate = plate
 
             if best_plate:
                 logger.info(f"⚡ [PP-OCRv4] Placa reconhecida: {best_plate} (conf: {best_score:.2f})")
@@ -219,7 +240,6 @@ class PlateReader:
                 peri = cv2.arcLength(cnt, True)
                 approx = cv2.approxPolyDP(cnt, 0.02 * peri, True)
 
-                # Busca polígonos de 4 lados (retângulos com proporção de placa brasileira)
                 if len(approx) == 4:
                     x, y, cw, ch = cv2.boundingRect(approx)
                     aspect_ratio = float(cw) / max(1, ch)
