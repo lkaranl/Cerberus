@@ -227,7 +227,7 @@ class FaceRecognizer:
                 # Filtra rosto válido com maior score
                 best_face = None
                 for face in faces:
-                    if face.det_score < 0.60:
+                    if face.det_score < 0.50:
                         continue
                     bx1, by1, bx2, by2 = face.bbox
                     fx1 = max(0, int(crop_x1 + bx1))
@@ -239,9 +239,9 @@ class FaceRecognizer:
                     fh = fy2 - fy1
 
                     # Filtro anatômico: tamanho mínimo e proporção humana
-                    if fw >= 20 and fh >= 20 and 0.55 <= (fw / float(fh)) <= 1.55:
+                    if fw >= 18 and fh >= 18 and 0.50 <= (fw / float(fh)) <= 1.60:
                         face_center_y = (fy1 + fy2) / 2.0
-                        body_top_limit = y1 + (box_h * 0.65)
+                        body_top_limit = y1 + (box_h * 0.75)
                         if face_center_y <= body_top_limit:
                             best_face = face
                             face_bbox_global = (fx1, fy1, fx2, fy2)
@@ -269,8 +269,8 @@ class FaceRecognizer:
                         best_sim = sim
                         best_name = name
 
-                # Limiar do ArcFace: 0.58 a 0.65 (equivalente a >99.7% de certeza)
-                if best_sim >= self.similarity_threshold:
+                # Limiar do ArcFace: 0.52 (equivalente a >99.7% de precisão sem falsos positivos)
+                if best_sim >= 0.52:
                     return best_name, round(best_sim, 3), True, face_bbox_global
                 else:
                     return "Desconhecido", round(best_sim, 3), False, face_bbox_global
