@@ -748,26 +748,105 @@ body {
   flex-direction: column;
 }
 
-.media-box-label {
-  padding: 6px 12px;
-  font-size: 0.75rem;
-  color: var(--text-muted);
+.media-box-header {
+  padding: 8px 12px;
   background: rgba(255, 255, 255, 0.05);
   border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
-.modal-img-crop {
+.media-box-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.media-raw-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72rem;
+  color: var(--accent-cyan);
+  text-decoration: none;
+  background: rgba(0, 240, 255, 0.08);
+  border: 1px solid rgba(0, 240, 255, 0.25);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  transition: all 0.2s ease;
+}
+
+.media-raw-btn:hover {
+  background: rgba(0, 240, 255, 0.2);
+  border-color: var(--accent-cyan);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.media-img-container {
+  position: relative;
   width: 100%;
   height: 280px;
-  object-fit: contain;
   background: #050811;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
 }
 
+.media-loader {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(5, 8, 17, 0.85);
+  backdrop-filter: blur(4px);
+  z-index: 2;
+  transition: opacity 0.2s ease, visibility 0.2s;
+}
+
+.media-loader.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.spinner {
+  width: 26px;
+  height: 26px;
+  border: 3px solid rgba(0, 240, 255, 0.15);
+  border-top-color: var(--accent-cyan);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loader-text {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+}
+
+.modal-img-crop,
 .modal-img-full {
   width: 100%;
-  height: 280px;
+  height: 100%;
   object-fit: contain;
   background: #050811;
+  opacity: 0;
+  transition: opacity 0.25s ease-in-out;
+}
+
+.modal-img-crop.loaded,
+.modal-img-full.loaded {
+  opacity: 1;
 }
 
 .modal-meta-grid {

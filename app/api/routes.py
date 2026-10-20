@@ -44,7 +44,7 @@ async def get_events(
 
 @router.get("/events/{event_id}/crop")
 async def get_event_crop(event_id: str):
-    """Retorna a imagem recortada (crop) da pessoa detectada."""
+    """Retorna a imagem recortada (crop) da pessoa detectada com cache HTTP."""
     event = await db.get_event_by_id(event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Evento não encontrado")
@@ -53,12 +53,21 @@ async def get_event_crop(event_id: str):
     if not crop_path.exists():
         raise HTTPException(status_code=404, detail="Arquivo de recorte não encontrado")
 
-    return FileResponse(crop_path, media_type="image/jpeg")
+    return FileResponse(
+        crop_path,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "public, max-age=604800, immutable"}
+    )
 
 
 @router.get("/events/{event_id}/full")
-async def get_event_full(event_id: str):
-    """Retorna o snapshot completo com bounding boxes da detecção."""
+async def get_event_full(event_id: str, raw: bool = False):
+    """
+    Retorna o snapshot completo com bounding boxes da detecção.
+    Por padrão entrega versão otimizada para web (max 1280px) com cache HTTP,
+    garantindo carregamento instantâneo no navegador.
+    Use ?raw=true para obter o arquivo original em resolução nativa da câmera.
+    """
     event = await db.get_event_by_id(event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Evento não encontrado")
@@ -67,7 +76,46 @@ async def get_event_full(event_id: str):
     if not full_path.exists():
         raise HTTPException(status_code=404, detail="Arquivo de snapshot completo não encontrado")
 
-    return FileResponse(full_path, media_type="image/jpeg")
+    cache_headers = {"Cache-Control": "public, max-age=604800, immutable"}
+
+    if raw:
+        return FileResponse(full_path, media_type="image/jpeg", headers=cache_headers)
+
+    # 1. Verifica se já existe a versão web pré-gerada
+    web_path = full_path.with_name(f"{full_path.stem}_web{full_path.suffix}")
+    if web_path.exists():
+        return FileResponse(web_path, media_type="image/jpeg", headers=cache_headers)
+
+    # 2. Se o arquivo original já for leve (< 280 KB), serve diretamente
+    try:
+        if full_path.stat().st_size <= 280 * 1024:
+            return FileResponse(full_path, media_type="image/jpeg", headers=cache_headers)
+    except OSError:
+        pass
+
+    # 3. Gera versão web otimizada em background para responder rápido e cachear no disco
+    import asyncio
+    def _create_web_preview():
+        try:
+            import cv2
+            img = cv2.imread(str(full_path))
+            if img is None:
+                return full_path
+            h, w = img.shape[:2]
+            if w > 1280:
+                scale = 1280.0 / w
+                new_w = 1280
+                new_h = int(h * scale)
+                img_resized = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+            else:
+                img_resized = img
+            cv2.imwrite(str(web_path), img_resized, [cv2.IMWRITE_JPEG_QUALITY, 80])
+            return web_path
+        except Exception:
+            return full_path
+
+    target_file = await asyncio.to_thread(_create_web_preview)
+    return FileResponse(target_file, media_type="image/jpeg", headers=cache_headers)
 
 
 @router.get("/stats")

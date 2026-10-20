@@ -32,6 +32,9 @@ document.addEventListener("DOMContentLoaded", () => {
     modalTime: document.getElementById("modal-time"),
     modalCropImg: document.getElementById("modal-crop-img"),
     modalFullImg: document.getElementById("modal-full-img"),
+    modalCropLoader: document.getElementById("modal-crop-loader"),
+    modalFullLoader: document.getElementById("modal-full-loader"),
+    modalFullRawLink: document.getElementById("modal-full-raw-link"),
     modalTrackId: document.getElementById("modal-track-id"),
     modalConfidence: document.getElementById("modal-confidence"),
     modalEventId: document.getElementById("modal-event-id")
@@ -483,13 +486,31 @@ document.addEventListener("DOMContentLoaded", () => {
           </div>
         `;
 
+    // Pré-carrega imagem completa em background ao passar o mouse (hover)
+    card.addEventListener("mouseenter", () => {
+      prefetchEventImages(evt.event_id || evt.id);
+    }, { once: true });
+
     card.addEventListener("click", () => openModal(evt));
 
     if (isNew) {
       dom.eventsList.prepend(card);
+      // Pré-carrega imediatamente o alerta mais recente para abertura instantânea
+      prefetchEventImages(evt.event_id || evt.id);
     } else {
       dom.eventsList.appendChild(card);
     }
+  }
+
+  // --- Prefetch Inteligente de Imagens ---
+  const prefetchedEvents = new Set();
+  function prefetchEventImages(eventId) {
+    if (!eventId || prefetchedEvents.has(eventId)) return;
+    prefetchedEvents.add(eventId);
+
+    // Cria requisição discreta em background para aquecer o cache HTTP do navegador
+    const preImg = new Image();
+    preImg.src = `/api/events/${eventId}/full`;
   }
 
   // --- Modal de Evidência ---
@@ -510,17 +531,62 @@ document.addEventListener("DOMContentLoaded", () => {
 
     dom.modalCameraTitle.textContent = evt.camera_name || evt.camera_id;
     dom.modalTime.textContent = timeFormatted;
-    dom.modalCropImg.src = `/api/events/${id}/crop`;
-    dom.modalFullImg.src = `/api/events/${id}/full`;
     dom.modalTrackId.textContent = `#${evt.tracking_id}`;
     dom.modalConfidence.textContent = `${Math.round((evt.confidence || 0) * 100)}%`;
     dom.modalEventId.textContent = evt.event_id || `ID: ${evt.id}`;
+
+    if (dom.modalFullRawLink) {
+      dom.modalFullRawLink.href = `/api/events/${id}/full?raw=true`;
+    }
+
+    // 1. Limpa imagens anteriores e mostra loaders para evitar exibir imagem errada
+    dom.modalCropImg.classList.remove("loaded");
+    dom.modalFullImg.classList.remove("loaded");
+    if (dom.modalCropLoader) dom.modalCropLoader.classList.remove("hidden");
+    if (dom.modalFullLoader) dom.modalFullLoader.classList.remove("hidden");
+
+    // 2. Handlers do Crop
+    dom.modalCropImg.onload = () => {
+      dom.modalCropImg.classList.add("loaded");
+      if (dom.modalCropLoader) dom.modalCropLoader.classList.add("hidden");
+    };
+    dom.modalCropImg.onerror = () => {
+      if (dom.modalCropLoader) dom.modalCropLoader.classList.add("hidden");
+    };
+
+    // 3. Handlers da Cena Completa com Bounding Box
+    dom.modalFullImg.onload = () => {
+      dom.modalFullImg.classList.add("loaded");
+      if (dom.modalFullLoader) dom.modalFullLoader.classList.add("hidden");
+    };
+    dom.modalFullImg.onerror = () => {
+      if (dom.modalFullLoader) dom.modalFullLoader.classList.add("hidden");
+    };
+
+    // 4. Inicia o carregamento das imagens
+    dom.modalCropImg.src = `/api/events/${id}/crop`;
+    dom.modalFullImg.src = `/api/events/${id}/full`;
+
+    // 5. Se já estava no cache HTTP local, ativa imediatamente
+    if (dom.modalCropImg.complete && dom.modalCropImg.naturalWidth > 0) {
+      dom.modalCropImg.classList.add("loaded");
+      if (dom.modalCropLoader) dom.modalCropLoader.classList.add("hidden");
+    }
+    if (dom.modalFullImg.complete && dom.modalFullImg.naturalWidth > 0) {
+      dom.modalFullImg.classList.add("loaded");
+      if (dom.modalFullLoader) dom.modalFullLoader.classList.add("hidden");
+    }
 
     dom.modal.classList.add("active");
   }
 
   function closeModal() {
     dom.modal.classList.remove("active");
+    // Libera referência para não manter buffers no DOM
+    dom.modalCropImg.src = "";
+    dom.modalFullImg.src = "";
+    dom.modalCropImg.classList.remove("loaded");
+    dom.modalFullImg.classList.remove("loaded");
   }
 
   init();

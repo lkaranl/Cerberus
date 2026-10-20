@@ -467,6 +467,20 @@ class CameraTrackerManager:
                 cv2.imwrite(crop_path, crop_img, [cv2.IMWRITE_JPEG_QUALITY, 90])
                 cv2.imwrite(full_path, annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
 
+                # Salva versão web pré-otimizada (max 1280px) para abertura instantânea no painel
+                web_filename = f"{date_prefix}_{self.camera_id}_{track.entity_type}_{tag_clean}_id{tid}_full_web.jpg"
+                web_path = str(events_dir / web_filename)
+                try:
+                    h_full, w_full = annotated_frame.shape[:2]
+                    if w_full > 1280:
+                        scale = 1280.0 / w_full
+                        web_frame = cv2.resize(annotated_frame, (1280, int(h_full * scale)), interpolation=cv2.INTER_AREA)
+                    else:
+                        web_frame = annotated_frame
+                    cv2.imwrite(web_path, web_frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                except Exception as resize_err:
+                    logger.debug(f"Falha ao gerar preview web: {resize_err}")
+
                 event_record = {
                     "event_id": event_id,
                     "camera_id": self.camera_id,

@@ -144,13 +144,32 @@
 
       <div class="modal-body">
         <div class="modal-media-row">
-          <div class="modal-media-box">
-            <span class="media-box-label">Recorte da Pessoa</span>
-            <img id="modal-crop-img" src="" alt="Recorte" class="modal-img-crop">
+          <div class="modal-media-box" id="modal-crop-box">
+            <div class="media-box-header">
+              <span class="media-box-label">Recorte da Pessoa</span>
+            </div>
+            <div class="media-img-container">
+              <div class="media-loader" id="modal-crop-loader">
+                <div class="spinner"></div>
+              </div>
+              <img id="modal-crop-img" src="" alt="Recorte" class="modal-img-crop">
+            </div>
           </div>
-          <div class="modal-media-box full-box">
-            <span class="media-box-label">Cena Completa com Bounding Box</span>
-            <img id="modal-full-img" src="" alt="Cena Completa" class="modal-img-full">
+          <div class="modal-media-box full-box" id="modal-full-box">
+            <div class="media-box-header">
+              <span class="media-box-label">Cena Completa com Bounding Box</span>
+              <a id="modal-full-raw-link" href="#" target="_blank" class="media-raw-btn" title="Abrir imagem na resolução máxima original (4K/1080p)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+                Resolução Original
+              </a>
+            </div>
+            <div class="media-img-container">
+              <div class="media-loader" id="modal-full-loader">
+                <div class="spinner"></div>
+                <span class="loader-text">Carregando cena...</span>
+              </div>
+              <img id="modal-full-img" src="" alt="Cena Completa" class="modal-img-full">
+            </div>
           </div>
         </div>
 

@@ -578,12 +578,31 @@
       <div class="modal-body">
         <div class="modal-media-row">
           <div class="modal-media-box">
-            <span class="media-box-label">Recorte do Alvo</span>
-            <img id="modal-crop" src="" alt="Recorte" class="modal-img-crop">
+            <div class="media-box-header">
+              <span class="media-box-label">Recorte do Alvo</span>
+            </div>
+            <div class="media-img-container">
+              <div class="media-loader" id="modal-crop-loader">
+                <div class="spinner"></div>
+              </div>
+              <img id="modal-crop" src="" alt="Recorte" class="modal-img-crop">
+            </div>
           </div>
-          <div class="modal-media-box">
-            <span class="media-box-label">Cena Completa com Caixa Delimitadora</span>
-            <img id="modal-full" src="" alt="Cena Completa" class="modal-img-full">
+          <div class="modal-media-box full-box">
+            <div class="media-box-header">
+              <span class="media-box-label">Cena Completa com Caixa Delimitadora</span>
+              <a id="modal-full-raw-link" href="#" target="_blank" class="media-raw-btn" title="Abrir imagem na resolução máxima original (4K/1080p)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+                Resolução Original
+              </a>
+            </div>
+            <div class="media-img-container">
+              <div class="media-loader" id="modal-full-loader">
+                <div class="spinner"></div>
+                <span class="loader-text">Carregando cena...</span>
+              </div>
+              <img id="modal-full" src="" alt="Cena Completa" class="modal-img-full">
+            </div>
           </div>
         </div>
       </div>
@@ -720,9 +739,12 @@
               ? `<span class="badge-plate">${evt.license_plate}</span>`
               : `<span style="color: var(--text-dim);">-</span>`;
 
+            const eventId = evt.event_id || evt.id;
             tr.innerHTML = `
               <td>
-                <img src="${cropUrl}" alt="Crop" class="table-thumb" onclick="openModal('${evt.event_id || evt.id}', '${evt.person_name}')">
+                <img src="${cropUrl}" alt="Crop" class="table-thumb" 
+                     onmouseenter="prefetchEvent('${eventId}')" 
+                     onclick="openModal('${eventId}', '${evt.person_name}')">
               </td>
               <td><span style="font-size: 0.78rem; color: var(--text-muted);">${typeLabel}</span></td>
               <td><span class="${badgeClass}">${evt.person_name}</span></td>
@@ -808,16 +830,73 @@
         }
       });
 
+      // Prefetch inteligente em background
+      const prefetchedDashEvents = new Set();
+      window.prefetchEvent = function(id) {
+        if (!id || prefetchedDashEvents.has(id)) return;
+        prefetchedDashEvents.add(id);
+        const img = new Image();
+        img.src = `/api/events/${id}/full`;
+      };
+
       // Modal
+      const modalCropImg = document.getElementById("modal-crop");
+      const modalFullImg = document.getElementById("modal-full");
+      const modalCropLoader = document.getElementById("modal-crop-loader");
+      const modalFullLoader = document.getElementById("modal-full-loader");
+      const modalFullRawLink = document.getElementById("modal-full-raw-link");
+
       window.openModal = function(id, name) {
         document.getElementById("modal-name").textContent = `Evidência: ${name}`;
-        document.getElementById("modal-crop").src = `/api/events/${id}/crop`;
-        document.getElementById("modal-full").src = `/api/events/${id}/full`;
+
+        if (modalFullRawLink) {
+          modalFullRawLink.href = `/api/events/${id}/full?raw=true`;
+        }
+
+        // Limpa estado anterior e mostra loaders
+        modalCropImg.classList.remove("loaded");
+        modalFullImg.classList.remove("loaded");
+        if (modalCropLoader) modalCropLoader.classList.remove("hidden");
+        if (modalFullLoader) modalFullLoader.classList.remove("hidden");
+
+        modalCropImg.onload = () => {
+          modalCropImg.classList.add("loaded");
+          if (modalCropLoader) modalCropLoader.classList.add("hidden");
+        };
+        modalCropImg.onerror = () => {
+          if (modalCropLoader) modalCropLoader.classList.add("hidden");
+        };
+
+        modalFullImg.onload = () => {
+          modalFullImg.classList.add("loaded");
+          if (modalFullLoader) modalFullLoader.classList.add("hidden");
+        };
+        modalFullImg.onerror = () => {
+          if (modalFullLoader) modalFullLoader.classList.add("hidden");
+        };
+
+        modalCropImg.src = `/api/events/${id}/crop`;
+        modalFullImg.src = `/api/events/${id}/full`;
+
+        // Se a imagem já estiver em cache, exibe instantaneamente
+        if (modalCropImg.complete && modalCropImg.naturalWidth > 0) {
+          modalCropImg.classList.add("loaded");
+          if (modalCropLoader) modalCropLoader.classList.add("hidden");
+        }
+        if (modalFullImg.complete && modalFullImg.naturalWidth > 0) {
+          modalFullImg.classList.add("loaded");
+          if (modalFullLoader) modalFullLoader.classList.add("hidden");
+        }
+
         document.getElementById("dash-modal").classList.add("active");
       };
 
       document.getElementById("modal-close").addEventListener("click", () => {
         document.getElementById("dash-modal").classList.remove("active");
+        modalCropImg.src = "";
+        modalFullImg.src = "";
+        modalCropImg.classList.remove("loaded");
+        modalFullImg.classList.remove("loaded");
       });
 
       loadDashboard();
