@@ -36,12 +36,12 @@ class FaceRecognizer:
             self.torch = torch
 
             logger.info(f"Carregando FaceNet (InceptionResnetV1) no dispositivo: {self.device}...")
-            # MTCNN otimizado para sensibilidade e alta velocidade na GPU (detecta rostos à distância no corredor)
+            # MTCNN com limiares rigorosos para garantir detecção exclusiva de rostos reais
             self.mtcnn = MTCNN(
                 image_size=160,
                 margin=20,
-                min_face_size=20,
-                thresholds=[0.5, 0.55, 0.55],
+                min_face_size=28,
+                thresholds=[0.65, 0.75, 0.80],
                 keep_all=False,
                 select_largest=True,
                 device=self.device
@@ -180,23 +180,23 @@ class FaceRecognizer:
         h, w = frame_bgr.shape[:2]
         x1, y1, x2, y2 = bbox
 
-        # Foca nos primeiros 55% superiores da bounding box (onde fica a cabeça/rosto)
+        # Foca estritamente nos 42% superiores da bounding box (onde fica a cabeça/pescoço)
         box_h = y2 - y1
-        head_y2 = min(y2, y1 + int(box_h * 0.55))
+        head_y2 = min(y2, y1 + int(box_h * 0.42))
 
-        # Margem para compensar inclinação ao andar
+        # Margem lateral para compensar inclinação natural ao caminhar
         box_w = x2 - x1
-        pad_x = int(box_w * 0.15)
+        pad_x = int(box_w * 0.12)
         crop_x1 = max(0, x1 - pad_x)
         crop_x2 = min(w, x2 + pad_x)
-        crop_y1 = max(0, y1 - 15)
-        crop_y2 = min(h, head_y2 + 15)
+        crop_y1 = max(0, y1 - 10)
+        crop_y2 = min(h, head_y2 + 10)
 
         head_crop_bgr = frame_bgr[crop_y1:crop_y2, crop_x1:crop_x2]
-        if head_crop_bgr.size == 0:
+        if head_crop_bgr.size == 0 or head_crop_bgr.shape[0] < 20 or head_crop_bgr.shape[1] < 20:
             return "Desconhecido", 0.0, False, None
 
-        # Pré-downscale adaptativo do recorte (max 320px) preservando nitidez de rostos no fundo do corredor
+        # Pré-downscale adaptativo do recorte (max 320px) preservando nitidez
         ch, cw = head_crop_bgr.shape[:2]
         max_dim = 320
         scale = 1.0
@@ -208,40 +208,38 @@ class FaceRecognizer:
             head_crop_rgb = cv2.cvtColor(head_crop_bgr, cv2.COLOR_BGR2RGB)
             face_bbox_global: Optional[Tuple[int, int, int, int]] = None
 
-            # 1. Detecta coordenadas precisas do rosto
+            # Detecta coordenadas precisas do rosto com alta taxa de certeza
             boxes, probs = self.mtcnn.detect(head_crop_rgb)
-            if boxes is not None and len(boxes) > 0 and probs[0] is not None and probs[0] >= 0.65:
-                bx1, by1, bx2, by2 = boxes[0]
-                inv_scale = 1.0 / scale
-                fx1 = max(0, int(crop_x1 + (bx1 * inv_scale)))
-                fy1 = max(0, int(crop_y1 + (by1 * inv_scale)))
-                fx2 = min(w, int(crop_x1 + (bx2 * inv_scale)))
-                fy2 = min(h, int(crop_y1 + (by2 * inv_scale)))
-                if (fx2 - fx1) > 10 and (fy2 - fy1) > 10:
-                    face_bbox_global = (fx1, fy1, fx2, fy2)
+            if boxes is not None and len(boxes) > 0 and probs[0] is not None:
+                prob = float(probs[0])
+                # Limiar rigoroso: probabilidade mínima de 88% de ser um rosto humano real
+                if prob >= 0.88:
+                    bx1, by1, bx2, by2 = boxes[0]
+                    inv_scale = 1.0 / scale
+                    fx1 = max(0, int(crop_x1 + (bx1 * inv_scale)))
+                    fy1 = max(0, int(crop_y1 + (by1 * inv_scale)))
+                    fx2 = min(w, int(crop_x1 + (bx2 * inv_scale)))
+                    fy2 = min(h, int(crop_y1 + (by2 * inv_scale)))
 
-            # Se o recorte superior não capturou (ex: inclinado), tenta na bbox do corpo inteiro
-            if face_bbox_global is None:
-                full_crop_bgr = frame_bgr[max(0, y1):min(h, y2), max(0, x1):min(w, x2)]
-                if full_crop_bgr.size > 0:
-                    fh, fw = full_crop_bgr.shape[:2]
-                    s_f = 1.0
-                    if max(fh, fw) > 240:
-                        s_f = 240.0 / max(fh, fw)
-                        full_crop_bgr = cv2.resize(full_crop_bgr, (int(fw * s_f), int(fh * s_f)), interpolation=cv2.INTER_LINEAR)
-                    full_crop_rgb = cv2.cvtColor(full_crop_bgr, cv2.COLOR_BGR2RGB)
-                    f_boxes, f_probs = self.mtcnn.detect(full_crop_rgb)
-                    if f_boxes is not None and len(f_boxes) > 0 and f_probs[0] is not None and f_probs[0] >= 0.65:
-                        fbx1, fby1, fbx2, fby2 = f_boxes[0]
-                        inv_sf = 1.0 / s_f
-                        fx1 = max(0, int(x1 + (fbx1 * inv_sf)))
-                        fy1 = max(0, int(y1 + (fby1 * inv_sf)))
-                        fx2 = min(w, int(x1 + (fbx2 * inv_sf)))
-                        fy2 = min(h, int(y1 + (fby2 * inv_sf)))
-                        if (fx2 - fx1) > 10 and (fy2 - fy1) > 10:
-                            face_bbox_global = (fx1, fy1, fx2, fy2)
+                    fw = fx2 - fx1
+                    fh = fy2 - fy1
 
-            # Se nenhum rosto foi detectado (pessoa de costas ou rosto totalmente oculto)
+                    # Filtro Anatômico Rígido Anti-Braço / Anti-Corpo:
+                    # 1. Dimensões mínimas: rosto não pode ser minúsculo (< 22px)
+                    # 2. Aspect Ratio: proporção largura/altura deve ser compatível com rosto humano (0.65 a 1.40)
+                    # 3. Posição corporal: o centro do rosto DEVE estar no terço superior do corpo
+                    face_center_y = (fy1 + fy2) / 2.0
+                    body_top_limit = y1 + (box_h * 0.40)
+
+                    if (
+                        fw >= 22
+                        and fh >= 22
+                        and 0.65 <= (fw / float(fh)) <= 1.40
+                        and face_center_y <= body_top_limit
+                    ):
+                        face_bbox_global = (fx1, fy1, fx2, fy2)
+
+            # Se nenhum rosto autêntico foi detectado (pessoa de costas, nuca, braço ou corpo)
             if face_bbox_global is None:
                 return "Desconhecido", 0.0, False, None
 

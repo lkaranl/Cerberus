@@ -58,6 +58,7 @@ class TrackedEntity:
         self.event_full_path: Optional[str] = None
         self.event_web_path: Optional[str] = None
         self.needs_face_upgrade: bool = False
+        self.face_upgraded: bool = False
 
         # Análise de Movimento & Detecção de Estacionamento
         self.centroid_history: List[Tuple[float, float, float]] = []  # (x, y, timestamp)
@@ -416,8 +417,8 @@ class CameraTrackerManager:
                         track.latest_face_bbox = face_bbox
                         track.has_face_captured = True
 
-                        # Se este track já alertou de costas e aguardava rosto:
-                        if track.event_triggered and track.active_event_id:
+                        # Se este track já alertou de costas e aguardava rosto (e ainda não fez o upgrade):
+                        if track.event_triggered and track.active_event_id and not track.face_upgraded:
                             track.needs_face_upgrade = True
 
                         # Se for um novo track (ex: virou lá no fundo) mas há evento recente com nuca aguardando rosto:
@@ -679,10 +680,12 @@ class CameraTrackerManager:
                 and track.event_triggered
                 and track.active_event_id
                 and track.latest_face_bbox is not None
+                and not track.face_upgraded
                 and (track.needs_face_upgrade or not track.has_face_captured)
             ):
                 track.needs_face_upgrade = False
                 track.has_face_captured = True
+                track.face_upgraded = True
                 self.last_alert_had_face[cooldown_key] = True
 
                 # Remove este evento da fila de pendentes

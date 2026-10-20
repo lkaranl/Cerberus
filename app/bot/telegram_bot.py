@@ -24,6 +24,7 @@ class TelegramBot:
         self.base_url: str = ""
         self._last_update_id: int = 0
         self._running: bool = False
+        self._sent_event_ids: set = set()
 
     async def start(self) -> bool:
         """
@@ -125,14 +126,18 @@ class TelegramBot:
         if entity_type == "pet" and not settings.telegram_notify_pet:
             return False
 
-        # REGRA DE OURO: No Telegram só enviamos a foto do ROSTO da pessoa!
-        # Se a pessoa entrou de costas (sem rosto ainda capturado), não enviamos a nuca.
-        # Aguardamos ela virar de frente ou retornar para disparar com a foto frontal.
+        event_id = event.get("event_id", "")
+        # Anti-spam: se este evento já foi notificado no Telegram, não reenvia
+        if event_id and event_id in self._sent_event_ids:
+            return False
+
         is_upgrade = (event.get("_msg_type") == "EVENT_UPDATED")
         has_face = event.get("has_face_captured", False)
 
+        # REGRA DE OURO: No Telegram só enviamos a foto do ROSTO com alta certeza!
+        # Se for pessoa e ainda não tiver o rosto confirmado, descarta silenciosamente.
+        # Quando a pessoa mostrar o rosto, o evento de upgrade enviará a foto nítida.
         if entity_type == "person" and not has_face and not is_upgrade:
-            logger.debug("ℹ️ Telegram: Alerta inicial suprimido por estar de costas (aguardando foto do rosto).")
             return False
 
         # Caso especial: Upgrade de Evidência (a pessoa mostrou o rosto após alerta inicial de costas)
@@ -165,23 +170,29 @@ class TelegramBot:
             f"{icon} <b>Alvo:</b> {name}{face_pct} ({known_badge}){plate_str}\n"
             f"🕒 <b>Horário:</b> {hora_fmt}\n"
             f"🎯 <b>Confiança da IA:</b> {int(event.get('confidence', 0.0) * 100)}%\n"
-            f"🆔 <b>Evento:</b> <code>{event.get('event_id', '')}</code>"
+            f"🆔 <b>Evento:</b> <code>{event_id}</code>"
         )
 
         crop_path = event.get("crop_path")
 
         # No Telegram enviamos EXCLUSIVAMENTE a imagem recortada do rosto:
+        sent = False
         if crop_path and Path(crop_path).exists():
-            return await self._send_single_photo(chat_id, Path(crop_path), caption)
+            sent = await self._send_single_photo(chat_id, Path(crop_path), caption)
 
-        full_path = event.get("full_path")
-        if full_path and Path(full_path).exists():
-            return await self._send_single_photo(chat_id, Path(full_path), caption)
+        if sent and event_id:
+            self._sent_event_ids.add(event_id)
+            if len(self._sent_event_ids) > 250:
+                self._sent_event_ids = set(list(self._sent_event_ids)[-125:])
 
-        return await self._send_text_message(chat_id, caption)
+        return sent
 
     async def _send_upgrade_notice(self, event: Dict[str, Any], chat_id: str) -> bool:
         """Envia a foto do rosto assim que a pessoa que estava de costas vira para a câmera."""
+        event_id = event.get("event_id", "")
+        if event_id and event_id in self._sent_event_ids:
+            return False
+
         name = event.get("person_name", "Desconhecido")
         face_conf = event.get("face_confidence", 0.0)
         face_pct = f" ({int(face_conf * 100)}%)" if face_conf > 0 else ""
@@ -193,16 +204,21 @@ class TelegramBot:
             f"📹 <b>Câmera:</b> {event.get('camera_name', 'Câmera')}\n"
             f"🎯 <b>Alvo:</b> <b>{name}</b>{face_pct} ({known_badge})\n"
             f"🕒 <b>Horário:</b> {datetime.now().strftime('%d/%m/%Y às %H:%M:%S')}\n"
-            f"🆔 <b>Evento:</b> <code>{event.get('event_id', '')}</code>\n"
+            f"🆔 <b>Evento:</b> <code>{event_id}</code>\n"
             f"✨ <i>Rosto capturado com sucesso ao virar para a câmera.</i>"
         )
 
-        # Envia estritamente a foto nítida do rosto em alta resolução
         crop_path = event.get("crop_path")
+        sent = False
         if crop_path and Path(crop_path).exists():
-            return await self._send_single_photo(chat_id, Path(crop_path), caption)
+            sent = await self._send_single_photo(chat_id, Path(crop_path), caption)
 
-        return await self._send_text_message(chat_id, caption)
+        if sent and event_id:
+            self._sent_event_ids.add(event_id)
+            if len(self._sent_event_ids) > 250:
+                self._sent_event_ids = set(list(self._sent_event_ids)[-125:])
+
+        return sent
 
     async def _send_single_photo(self, chat_id: str, photo_path: Path, caption: str) -> bool:
         """Envia uma única foto com legenda formatada em HTML."""
