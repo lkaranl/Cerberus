@@ -75,9 +75,11 @@ document.addEventListener("DOMContentLoaded", () => {
       const data = await res.json();
 
       if (data.hardware) {
-        if (data.hardware.type === "NVIDIA CUDA") {
+        if (data.hardware.tensorrt_active) {
+          dom.hardwareLabel.textContent = `NVIDIA GTX 1660 [TensorRT FP16 ⚡] (${data.hardware.allocated_mb} MB)`;
+        } else if (data.hardware.type && data.hardware.type.includes("CUDA")) {
           dom.hardwareLabel.textContent = `NVIDIA GTX 1660 (${data.hardware.allocated_mb} MB VRAM)`;
-        } else if (data.hardware.type.includes("Metal")) {
+        } else if (data.hardware.type && data.hardware.type.includes("Metal")) {
           dom.hardwareLabel.textContent = "Apple Silicon (MPS)";
         } else {
           dom.hardwareLabel.textContent = data.hardware.device.toUpperCase();

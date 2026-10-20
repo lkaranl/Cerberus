@@ -108,7 +108,7 @@ Regras de comportamento do sistema baseadas no horário ou no estado da casa.
 
 ---
 
-## 8. ⚡ Aceleração Máxima com TensorRT na GPU NVIDIA (GTX 1660)
+## 8. ⚡ Aceleração Máxima com TensorRT na GPU NVIDIA (GTX 1660) `[IMPLEMENTADO ✅]`
 
 ### O que é:
 Exportar o modelo YOLOv8 do PyTorch para o formato **TensorRT FP16** nativo da NVIDIA.
@@ -117,6 +117,11 @@ Exportar o modelo YOLOv8 do PyTorch para o formato **TensorRT FP16** nativo da N
 - **Aumento de FPS**: Reduz a latência de inferência de ~15ms para **~3 a 4ms**.
 - **Menor consumo de VRAM e energia**: Otimização profunda dos núcleos CUDA da arquitetura Turing da GTX 1660.
 - Permite processar mais câmeras simultâneas a 30 FPS estáveis sem elevar a temperatura da placa.
+
+### Como usar no servidor Nobara Linux:
+1. Instalar o pacote no ambiente virtual: `pip install tensorrt`
+2. Executar o script de compilação e benchmark: `python scripts/export_tensorrt.py`
+3. Reiniciar o serviço: `sudo systemctl restart cerberus`
 
 ---
 

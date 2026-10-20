@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     vehicle_similarity_threshold: float = Field(default=0.82, alias="VEHICLE_SIMILARITY_THRESHOLD")
     pet_similarity_threshold: float = Field(default=0.80, alias="PET_SIMILARITY_THRESHOLD")
 
+    # Aceleração Máxima TensorRT (NVIDIA CUDA)
+    use_tensorrt: bool = Field(default=True, alias="USE_TENSORRT")
+    engine_path: str = Field(default="models/yolov8n.engine", alias="ENGINE_PATH")
+
     def resolve_device(self) -> str:
         """
         Resolve dinamicamente o melhor dispositivo de inferência disponível,

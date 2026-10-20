@@ -31,12 +31,14 @@ class YOLODetectorEngine:
     """
     def __init__(self, model_path: Optional[str] = None):
         self.model_path = model_path or settings.model_path
+        self.engine_path = settings.engine_path
         self.device = settings.resolve_device()
         self.is_cuda = self.device.startswith("cuda")
         self.model = None
+        self.using_tensorrt = False
 
     def initialize(self) -> None:
-        """Carrega o modelo YOLO e inicializa os reconhecedores faciais e visuais."""
+        """Carrega o modelo YOLO (TensorRT ou PyTorch) e inicializa reconhecedores."""
         try:
             from ultralytics import YOLO
         except ImportError as e:
@@ -44,9 +46,30 @@ class YOLODetectorEngine:
             raise e
 
         Path(self.model_path).parent.mkdir(parents=True, exist_ok=True)
-        logger.info(f"🚀 Inicializando YOLO [{self.model_path}] no dispositivo: {self.device}...")
-        self.model = YOLO(self.model_path)
-        logger.info("Modelo YOLO carregado com sucesso.")
+
+        # 1. Tenta carregar a engine compilada do TensorRT (FP16 nativo)
+        if self.is_cuda and settings.use_tensorrt and Path(self.engine_path).exists():
+            try:
+                logger.info(f"⚡ Inicializando YOLO com aceleração máxima TensorRT FP16 [{self.engine_path}]...")
+                self.model = YOLO(self.engine_path, task="detect")
+                self.using_tensorrt = True
+                logger.info("🚀 Engine TensorRT carregada com sucesso na GPU NVIDIA GTX 1660.")
+            except Exception as trt_err:
+                logger.warning(f"Falha ao carregar TensorRT ({trt_err}). Revertendo para PyTorch CUDA.")
+                self.using_tensorrt = False
+
+        # 2. Fallback para modelo PyTorch (.pt) padrão
+        if self.model is None:
+            logger.info(f"🚀 Inicializando YOLO PyTorch [{self.model_path}] no dispositivo: {self.device}...")
+            self.model = YOLO(self.model_path)
+            self.using_tensorrt = False
+            logger.info("Modelo YOLO PyTorch carregado com sucesso.")
+
+            if self.is_cuda and settings.use_tensorrt and not Path(self.engine_path).exists():
+                logger.info(
+                    "💡 Dica de Desempenho: Para ativar aceleração máxima TensorRT (~3ms na GTX 1660), "
+                    "execute no servidor: python scripts/export_tensorrt.py"
+                )
 
         # Inicializa o FaceNet para reconhecimento facial em GPU
         face_recognizer.initialize()
@@ -68,16 +91,19 @@ class YOLODetectorEngine:
         iou = iou_threshold or settings.iou_threshold
 
         try:
-            results = self.model.track(
-                source=frame,
-                persist=True,
-                tracker="bytetrack.yaml",
-                classes=TARGET_CLASS_IDS,
-                conf=conf,
-                iou=iou,
-                device=self.device,
-                verbose=False
-            )
+            track_kwargs = {
+                "source": frame,
+                "persist": True,
+                "tracker": "bytetrack.yaml",
+                "classes": TARGET_CLASS_IDS,
+                "conf": conf,
+                "iou": iou,
+                "verbose": False
+            }
+            if not self.using_tensorrt:
+                track_kwargs["device"] = self.device
+
+            results = self.model.track(**track_kwargs)
         except Exception as e:
             logger.error(f"Erro durante inferência YOLO: {e}")
             return []

@@ -77,16 +77,20 @@ async def get_system_stats():
     gpu_info = {"device": device, "type": "CPU"}
 
     try:
+        from app.detector.engine import detector_engine
         import torch
         if torch.cuda.is_available():
             dev_name = torch.cuda.get_device_name(0)
             mem_alloc = round(torch.cuda.memory_allocated(0) / 1024**2, 2)
             mem_res = round(torch.cuda.memory_reserved(0) / 1024**2, 2)
             total_mem = round(torch.cuda.get_device_properties(0).total_memory / 1024**2, 2)
+            backend_label = "NVIDIA CUDA (TensorRT FP16 ⚡)" if detector_engine.using_tensorrt else "NVIDIA CUDA"
             gpu_info = {
                 "device": device,
-                "type": "NVIDIA CUDA",
+                "type": backend_label,
                 "name": dev_name,
+                "tensorrt_active": detector_engine.using_tensorrt,
+                "model_format": "TensorRT .engine" if detector_engine.using_tensorrt else "PyTorch .pt",
                 "allocated_mb": mem_alloc,
                 "reserved_mb": mem_res,
                 "total_vram_mb": total_mem
@@ -95,7 +99,9 @@ async def get_system_stats():
             gpu_info = {
                 "device": "mps",
                 "type": "Apple Silicon Metal (MPS)",
-                "name": "Apple M4 / Metal"
+                "name": "Apple M4 / Metal",
+                "tensorrt_active": False,
+                "model_format": "PyTorch .pt"
             }
     except Exception:
         pass
