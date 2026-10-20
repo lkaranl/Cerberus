@@ -434,6 +434,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
           renderEventCard(payload.data, true);
           flashDetectionBadge(payload.data.camera_id);
+        } else if (payload.type === "EVENT_UPDATED" && payload.data) {
+          updateEventCard(payload.data);
         }
       } catch (err) {
         console.error("Erro ao processar mensagem de evento:", err);
@@ -457,10 +459,53 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  // --- Atualizar Card Existente ao Capturar Rosto / Identidade em Tempo Real ---
+  function updateEventCard(evt) {
+    const eventId = evt.event_id || evt.id;
+    const card = document.getElementById(`event-card-${eventId}`);
+    if (!card) return;
+
+    // Atualiza imagem do thumbnail com cache-buster para exibir o rosto imediatamente
+    const img = card.querySelector(".event-thumb");
+    if (img) {
+      img.src = `/api/events/${eventId}/crop?t=${Date.now()}`;
+    }
+
+    // Atualiza badge de identificação
+    const badge = card.querySelector(".event-id-badge");
+    if (badge) {
+      let typeIcon = "👤";
+      let badgeStyle = "background: var(--accent-green-dim); color: var(--accent-green); border: 1px solid rgba(0, 230, 118, 0.4);";
+
+      if (evt.entity_type === "vehicle") {
+        typeIcon = "🚗";
+        if (evt.is_known) badgeStyle = "background: rgba(0, 240, 255, 0.15); color: var(--accent-cyan); border: 1px solid rgba(0, 240, 255, 0.4);";
+      } else if (evt.entity_type === "pet") {
+        typeIcon = "🐾";
+        if (evt.is_known) badgeStyle = "background: rgba(224, 64, 251, 0.15); color: #e040fb; border: 1px solid rgba(224, 64, 251, 0.4);";
+      }
+
+      if (!evt.is_known) {
+        badgeStyle = "background: rgba(255, 171, 0, 0.15); color: var(--accent-amber); border: 1px solid rgba(255, 171, 0, 0.4);";
+      }
+
+      badge.style = badgeStyle;
+      badge.innerHTML = `${typeIcon} ${evt.person_name}`;
+    }
+
+    // Se o modal estiver aberto visualizando exatamente esse evento, atualiza o modal na hora
+    if (state.activeModalEventId === eventId) {
+      if (dom.modalCropImg) dom.modalCropImg.src = `/api/events/${eventId}/crop?t=${Date.now()}`;
+      if (dom.modalFullImg) dom.modalFullImg.src = `/api/events/${eventId}/full?t=${Date.now()}`;
+    }
+  }
+
   // --- Renderizar Card de Alerta na Sidebar ---
   function renderEventCard(evt, isNew = false) {
+    const eventId = evt.event_id || evt.id;
     const card = document.createElement("div");
     card.className = "event-card";
+    card.id = `event-card-${eventId}`;
 
     const timeObj = new Date(evt.timestamp);
     const timeFormatted = isNaN(timeObj.getTime())
@@ -600,10 +645,12 @@ document.addEventListener("DOMContentLoaded", () => {
       if (dom.modalFullLoader) dom.modalFullLoader.classList.add("hidden");
     }
 
+    state.activeModalEventId = id;
     dom.modal.classList.add("active");
   }
 
   function closeModal() {
+    state.activeModalEventId = null;
     dom.modal.classList.remove("active");
     // Libera referência para não manter buffers no DOM
     dom.modalCropImg.src = "";

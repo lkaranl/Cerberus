@@ -164,23 +164,27 @@ class FaceRecognizer:
 
         return self.resnet(face_batch)
 
-    def identify_person(self, frame_bgr: np.ndarray, bbox: Tuple[int, int, int, int]) -> Tuple[str, float, bool]:
+    def detect_and_identify_person(
+        self,
+        frame_bgr: np.ndarray,
+        bbox: Tuple[int, int, int, int]
+    ) -> Tuple[str, float, bool, Optional[Tuple[int, int, int, int]]]:
         """
-        Recebe o frame completo e a bounding box do corpo da pessoa detectada pelo YOLO.
-        Recorta a porção superior (cabeça/rosto), extrai o embedding e compara com a base conhecida.
-        Retorna: (nome_da_pessoa, confianca_similaridade, is_conhecido)
+        Detecta a localização exata do rosto (face_bbox) e identifica a pessoa via FaceNet.
+        Retorna: (nome_da_pessoa, confianca_similaridade, is_conhecido, face_bbox_global)
+        Se a pessoa estiver de costas ou o rosto não estiver visível, face_bbox_global será None.
         """
-        if not self.is_ready or not self.known_embeddings:
-            return "Desconhecido", 0.0, False
+        if not self.is_ready:
+            return "Desconhecido", 0.0, False, None
 
         h, w = frame_bgr.shape[:2]
         x1, y1, x2, y2 = bbox
 
-        # Foca nos primeiros 55% superiores da bounding box (onde fica a cabeça/rosto com folga)
+        # Foca nos primeiros 55% superiores da bounding box (onde fica a cabeça/rosto)
         box_h = y2 - y1
         head_y2 = min(y2, y1 + int(box_h * 0.55))
 
-        # Adiciona margem horizontal e vertical para compensar inclinação ao andar
+        # Margem para compensar inclinação ao andar
         box_w = x2 - x1
         pad_x = int(box_w * 0.15)
         crop_x1 = max(0, x1 - pad_x)
@@ -190,34 +194,72 @@ class FaceRecognizer:
 
         head_crop_bgr = frame_bgr[crop_y1:crop_y2, crop_x1:crop_x2]
         if head_crop_bgr.size == 0:
-            return "Desconhecido", 0.0, False
+            return "Desconhecido", 0.0, False, None
 
-        # Pré-downscale adaptativo do recorte (max 200px):
-        # Acelera em 2x a rede P-Net do MTCNN ao evitar pirâmides de convolução pesadas em 2K
+        # Pré-downscale adaptativo do recorte (max 200px) para máxima velocidade do MTCNN
         ch, cw = head_crop_bgr.shape[:2]
         max_dim = 200
+        scale = 1.0
         if max(ch, cw) > max_dim:
             scale = max_dim / max(ch, cw)
             head_crop_bgr = cv2.resize(head_crop_bgr, (int(cw * scale), int(ch * scale)), interpolation=cv2.INTER_LINEAR)
 
         try:
             head_crop_rgb = cv2.cvtColor(head_crop_bgr, cv2.COLOR_BGR2RGB)
-            face_tensor = self.mtcnn(head_crop_rgb)
+            face_bbox_global: Optional[Tuple[int, int, int, int]] = None
 
-            # Se o recorte superior não capturar (ex: pessoa inclinada ao andar), tenta na bbox completa
-            if face_tensor is None:
+            # 1. Detecta coordenadas precisas do rosto
+            boxes, probs = self.mtcnn.detect(head_crop_rgb)
+            if boxes is not None and len(boxes) > 0 and probs[0] is not None and probs[0] >= 0.65:
+                bx1, by1, bx2, by2 = boxes[0]
+                inv_scale = 1.0 / scale
+                fx1 = max(0, int(crop_x1 + (bx1 * inv_scale)))
+                fy1 = max(0, int(crop_y1 + (by1 * inv_scale)))
+                fx2 = min(w, int(crop_x1 + (bx2 * inv_scale)))
+                fy2 = min(h, int(crop_y1 + (by2 * inv_scale)))
+                if (fx2 - fx1) > 10 and (fy2 - fy1) > 10:
+                    face_bbox_global = (fx1, fy1, fx2, fy2)
+
+            # Se o recorte superior não capturou (ex: inclinado), tenta na bbox do corpo inteiro
+            if face_bbox_global is None:
                 full_crop_bgr = frame_bgr[max(0, y1):min(h, y2), max(0, x1):min(w, x2)]
                 if full_crop_bgr.size > 0:
                     fh, fw = full_crop_bgr.shape[:2]
+                    s_f = 1.0
                     if max(fh, fw) > 240:
                         s_f = 240.0 / max(fh, fw)
                         full_crop_bgr = cv2.resize(full_crop_bgr, (int(fw * s_f), int(fh * s_f)), interpolation=cv2.INTER_LINEAR)
                     full_crop_rgb = cv2.cvtColor(full_crop_bgr, cv2.COLOR_BGR2RGB)
-                    face_tensor = self.mtcnn(full_crop_rgb)
+                    f_boxes, f_probs = self.mtcnn.detect(full_crop_rgb)
+                    if f_boxes is not None and len(f_boxes) > 0 and f_probs[0] is not None and f_probs[0] >= 0.65:
+                        fbx1, fby1, fbx2, fby2 = f_boxes[0]
+                        inv_sf = 1.0 / s_f
+                        fx1 = max(0, int(x1 + (fbx1 * inv_sf)))
+                        fy1 = max(0, int(y1 + (fby1 * inv_sf)))
+                        fx2 = min(w, int(x1 + (fbx2 * inv_sf)))
+                        fy2 = min(h, int(y1 + (fby2 * inv_sf)))
+                        if (fx2 - fx1) > 10 and (fy2 - fy1) > 10:
+                            face_bbox_global = (fx1, fy1, fx2, fy2)
+
+            # Se nenhum rosto foi detectado (pessoa de costas ou rosto totalmente oculto)
+            if face_bbox_global is None:
+                return "Desconhecido", 0.0, False, None
+
+            # 2. Se não houver rostos conhecidos cadastrados, retorna que o rosto foi detectado como Desconhecido
+            if not self.known_embeddings:
+                return "Desconhecido", 0.0, False, face_bbox_global
+
+            # 3. Extrai embedding e compara com a base conhecida
+            face_tensor = self.mtcnn(head_crop_rgb)
+            if face_tensor is None:
+                # Tenta recortar diretamente a partir da face_bbox encontrada
+                fx1, fy1, fx2, fy2 = face_bbox_global
+                direct_face_rgb = cv2.cvtColor(frame_bgr[fy1:fy2, fx1:fx2], cv2.COLOR_BGR2RGB)
+                if direct_face_rgb.size > 0:
+                    face_tensor = self.mtcnn(direct_face_rgb)
 
             if face_tensor is None:
-                # Rosto não suficientemente visível ou de costas
-                return "Desconhecido", 0.0, False
+                return "Desconhecido", 0.0, False, face_bbox_global
 
             with self.torch.no_grad():
                 face_batch = face_tensor.unsqueeze(0).to(self.device)
@@ -234,13 +276,18 @@ class FaceRecognizer:
                         best_name = name
 
                 if best_sim >= self.similarity_threshold:
-                    return best_name, round(best_sim, 3), True
+                    return best_name, round(best_sim, 3), True, face_bbox_global
                 else:
-                    return "Desconhecido", round(best_sim, 3), False
+                    return "Desconhecido", round(best_sim, 3), False, face_bbox_global
 
         except Exception as e:
             logger.debug(f"Falha ao identificar rosto: {e}")
-            return "Desconhecido", 0.0, False
+            return "Desconhecido", 0.0, False, None
+
+    def identify_person(self, frame_bgr: np.ndarray, bbox: Tuple[int, int, int, int]) -> Tuple[str, float, bool]:
+        """Wrapper de compatibilidade retroativa que retorna apenas (nome, confiança, is_conhecido)."""
+        name, conf, is_known, _ = self.detect_and_identify_person(frame_bgr, bbox)
+        return name, conf, is_known
 
 
 face_recognizer = FaceRecognizer()

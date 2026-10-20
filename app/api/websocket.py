@@ -68,8 +68,9 @@ async def websocket_events(websocket: WebSocket):
         while True:
             # Aguarda próximo evento disparado pelo tracker
             event = await queue.get()
+            event_type = event.pop("_msg_type", "PERSON_DETECTED")
             await websocket.send_text(json.dumps({
-                "type": "PERSON_DETECTED",
+                "type": event_type,
                 "data": event
             }))
     except WebSocketDisconnect:

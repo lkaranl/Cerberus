@@ -105,6 +105,24 @@ class Database:
 
         return await asyncio.to_thread(_insert)
 
+    async def update_event(self, event_id: str, updates: Dict[str, Any]) -> bool:
+        """Atualiza campos de um evento existente (ex: upgrade de foto com rosto nítido ou identificação confirmada)."""
+        def _update():
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                set_clauses = []
+                params = []
+                for k, v in updates.items():
+                    set_clauses.append(f"{k} = ?")
+                    params.append(v)
+                params.append(event_id)
+                query = f"UPDATE events SET {', '.join(set_clauses)} WHERE event_id = ?"
+                cursor.execute(query, params)
+                conn.commit()
+                return cursor.rowcount > 0
+
+        return await asyncio.to_thread(_update)
+
     async def get_recent_events(
         self,
         limit: int = 50,

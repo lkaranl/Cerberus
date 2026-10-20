@@ -50,6 +50,15 @@ class TrackedEntity:
         self.license_plate: str = ""
         self.eval_count: int = 0
 
+        # Rastreamento Facial & Gestão Inteligente de Evidências
+        self.has_face_captured: bool = False
+        self.latest_face_bbox: Optional[Tuple[int, int, int, int]] = None
+        self.active_event_id: Optional[str] = None
+        self.event_crop_path: Optional[str] = None
+        self.event_full_path: Optional[str] = None
+        self.event_web_path: Optional[str] = None
+        self.needs_face_upgrade: bool = False
+
         # Análise de Movimento & Detecção de Estacionamento
         self.centroid_history: List[Tuple[float, float, float]] = []  # (x, y, timestamp)
         self.is_stationary: bool = False
@@ -277,6 +286,53 @@ class CameraTrackerManager:
             return frame
         return crop
 
+    def _extract_person_crop(
+        self,
+        frame: np.ndarray,
+        body_bbox: Tuple[int, int, int, int],
+        face_bbox: Optional[Tuple[int, int, int, int]] = None
+    ) -> np.ndarray:
+        """
+        Recorta com máxima prioridade o ROSTO da pessoa com margem anatômica completa (cabelo, queixo e orelhas).
+        Se a pessoa estiver de costas ou o rosto não estiver visível, recorta a porção superior do corpo como fallback.
+        """
+        h, w = frame.shape[:2]
+
+        if face_bbox is not None:
+            fx1, fy1, fx2, fy2 = face_bbox
+            fw = fx2 - fx1
+            fh = fy2 - fy1
+
+            if fw > 10 and fh > 10:
+                # Margem confortável para enquadrar cabeça inteira em altíssima definição
+                pad_w = int(fw * 0.38)
+                pad_h_top = int(fh * 0.45)
+                pad_h_bottom = int(fh * 0.35)
+
+                cx1 = max(0, fx1 - pad_w)
+                cy1 = max(0, fy1 - pad_h_top)
+                cx2 = min(w, fx2 + pad_w)
+                cy2 = min(h, fy2 + pad_h_bottom)
+
+                face_crop = frame[cy1:cy2, cx1:cx2]
+                if face_crop.size > 0 and face_crop.shape[0] > 15 and face_crop.shape[1] > 15:
+                    return face_crop
+
+        # Fallback (pessoa de costas): recorta os 60% superiores do corpo
+        bx1, by1, bx2, by2 = body_bbox
+        bw = bx2 - bx1
+        bh = by2 - by1
+        pad_x = int(bw * 0.12)
+        top_y2 = min(h, by1 + int(bh * 0.65))
+
+        cx1 = max(0, bx1 - pad_x)
+        cy1 = max(0, by1 - 10)
+        cx2 = min(w, bx2 + pad_x)
+        cy2 = top_y2
+
+        crop = frame[cy1:cy2, cx1:cx2]
+        return crop if crop.size > 0 else frame[by1:by2, bx1:bx2]
+
     async def process_tracks(
         self,
         raw_frame: np.ndarray,
@@ -337,7 +393,13 @@ class CameraTrackerManager:
                 crop_obj = self._extract_crop(raw_frame, bbox, margin_pct=0.05)
 
                 if entity_type == "person":
-                    name, face_conf, is_known = face_recognizer.identify_person(raw_frame, bbox)
+                    name, face_conf, is_known, face_bbox = face_recognizer.detect_and_identify_person(raw_frame, bbox)
+                    if face_bbox is not None:
+                        track.latest_face_bbox = face_bbox
+                        # Se já disparou o alerta inicial de costas e o rosto ainda não tinha sido capturado:
+                        if track.event_triggered and not track.has_face_captured:
+                            track.needs_face_upgrade = True
+
                     if is_known:
                         was_unknown = not track.is_known
                         had_alerted_unknown = track.event_triggered and "Desconhecido" in track.identity_name
@@ -346,9 +408,7 @@ class CameraTrackerManager:
                         track.match_confidence = face_conf
                         logger.info(f"👤 Rosto identificado em {self.camera_name}: {name} ({int(face_conf * 100)}%)")
                         if had_alerted_unknown:
-                            # Re-habilita disparo imediato para atualizar o painel com o nome do morador
-                            track.event_triggered = False
-                            track.needs_identity_upgrade = True
+                            track.needs_face_upgrade = True
 
                 elif entity_type == "vehicle":
                     plate = plate_reader.read_plate(crop_obj)
@@ -471,13 +531,13 @@ class CameraTrackerManager:
             is_fast_pet = (track.entity_type == "pet" and det["confidence"] >= 0.45)
             is_stable = (track.consecutive_frames >= settings.min_consecutive_frames) or is_fast_pet
 
+            # Caso 1: Novo Alerta Inicial
             if is_stable and not track.event_triggered:
                 track.event_triggered = True
-                track.needs_identity_upgrade = False
+                track.needs_face_upgrade = False
                 if track.is_stationary:
                     self._update_parked_anchor(track, det["bbox"])
 
-                # Se for upgrade de identidade (rosto reconhecido após ter sido visto de costas), fura o cooldown!
                 if not is_upgrade and elapsed_since_last_alert < settings.alert_cooldown_seconds:
                     logger.debug(
                         f"⏳ Alerta suprimido por cooldown ({int(elapsed_since_last_alert)}s / {settings.alert_cooldown_seconds}s): "
@@ -489,6 +549,7 @@ class CameraTrackerManager:
                 self.last_alert_time[cooldown_key] = now
 
                 event_id = f"evt_{uuid.uuid4().hex[:12]}"
+                track.active_event_id = event_id
                 timestamp_str = datetime.now().isoformat()
                 date_prefix = datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -504,8 +565,19 @@ class CameraTrackerManager:
                 full_path = str(events_dir / full_filename)
                 web_path = str(events_dir / web_filename)
 
+                track.event_crop_path = crop_path
+                track.event_full_path = full_path
+                track.event_web_path = web_path
+
+                # Estratégia de prioridade máxima do print:
+                # Para pessoas: se houver rosto detectado, o CROP É O ROSTO!
+                if track.entity_type == "person":
+                    crop_img = self._extract_person_crop(raw_frame, det["bbox"], face_bbox=track.latest_face_bbox)
+                    track.has_face_captured = (track.latest_face_bbox is not None)
+                else:
+                    crop_img = self._extract_crop(raw_frame, track.best_bbox or det["bbox"], margin_pct=0.10)
+
                 # Salva recortes de evidência em background assíncrono (zero impacto no frame loop)
-                crop_img = self._extract_crop(raw_frame, track.best_bbox or det["bbox"], margin_pct=0.10)
                 asyncio.create_task(
                     asyncio.to_thread(_save_evidence_disk, crop_path, crop_img, full_path, annotated_frame.copy(), web_path)
                 )
@@ -531,9 +603,10 @@ class CameraTrackerManager:
 
                 category_icons = {"person": "👤", "vehicle": "🚗", "pet": "🐾"}
                 icon = category_icons.get(track.entity_type, "🎯")
+                face_status = "com foto nítida do rosto" if track.has_face_captured else "visto de costas (aguardando rosto)"
                 logger.info(
                     f"{icon} Alerta registrado: {self.camera_name} - {track.identity_name} "
-                    f"(ID #{tid}) -> {crop_filename}"
+                    f"(ID #{tid}) [{face_status}] -> {crop_filename}"
                 )
 
                 triggered_events.append(event_record)
@@ -543,5 +616,64 @@ class CameraTrackerManager:
                         await self.event_callback(event_record)
                     except Exception as err:
                         logger.error(f"Erro no callback de evento: {err}")
+
+            # Caso 2: Upgrade de Evidência com Rosto (pessoa que foi vista inicialmente de costas e agora mostrou o rosto)
+            elif (
+                track.entity_type == "person"
+                and track.event_triggered
+                and track.active_event_id
+                and track.latest_face_bbox is not None
+                and (track.needs_face_upgrade or not track.has_face_captured)
+            ):
+                track.needs_face_upgrade = False
+                track.has_face_captured = True
+
+                # Recorta o rosto nítido em close
+                face_crop_img = self._extract_person_crop(raw_frame, det["bbox"], face_bbox=track.latest_face_bbox)
+
+                # Sobrescreve as imagens em disco com o momento em que o rosto está de frente
+                if track.event_crop_path and track.event_full_path and track.event_web_path:
+                    asyncio.create_task(
+                        asyncio.to_thread(
+                            _save_evidence_disk,
+                            track.event_crop_path,
+                            face_crop_img,
+                            track.event_full_path,
+                            annotated_frame.copy(),
+                            track.event_web_path
+                        )
+                    )
+
+                # Atualiza registro correspondente no SQLite
+                await db.update_event(track.active_event_id, {
+                    "confidence": round(det["confidence"], 3),
+                    "person_name": track.identity_name,
+                    "is_known": 1 if track.is_known else 0,
+                    "face_confidence": track.match_confidence
+                })
+
+                logger.info(
+                    f"📸 [Upgrade de Evidência] Rosto capturado para ID #{tid} ({track.identity_name}) em {self.camera_name}! "
+                    f"Recorte de rosto e cena atualizados."
+                )
+
+                # Notifica a interface web para trocar o card de costas pela foto do rosto em tempo real
+                updated_record = {
+                    "_msg_type": "EVENT_UPDATED",
+                    "event_id": track.active_event_id,
+                    "camera_id": self.camera_id,
+                    "camera_name": self.camera_name,
+                    "tracking_id": tid,
+                    "confidence": round(det["confidence"], 3),
+                    "person_name": track.identity_name,
+                    "is_known": track.is_known,
+                    "face_confidence": track.match_confidence,
+                    "entity_type": track.entity_type
+                }
+                if self.event_callback:
+                    try:
+                        await self.event_callback(updated_record)
+                    except Exception as err:
+                        logger.debug(f"Erro no callback de upgrade: {err}")
 
         return annotated_frame, triggered_events
