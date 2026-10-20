@@ -58,29 +58,71 @@ def main():
 
     # 4. Exportação para TensorRT FP16
     engine_dest = Path("models/yolov8n.engine")
+    onnx_dest = Path("models/yolov8n.onnx")
     print("\n⚡ Iniciando compilação da engine TensorRT FP16...")
     print("Isso pode levar de 1 a 3 minutos na primeira vez (calibração de kernels CUDA)...")
 
     start_export = time.time()
+    export_ok = False
+
+    # Tentativa 1: Exportação via Ultralytics
     try:
         exported_path = model.export(
             format="engine",
-            half=True,        # Meia precisão (FP16) nativa para acelerar os Tensor Cores da Turing
-            device=0,         # GPU NVIDIA primária
-            workspace=4,      # 4GB de workspace máximo para calibração
+            half=True,
+            device=0,
+            workspace=4,
             imgsz=640,
             dynamic=False,
             verbose=False
         )
-        export_duration = time.time() - start_export
-        print(f"✓ Compilação concluída com sucesso em {export_duration:.1f}s!")
-        print(f"✓ Arquivo gerado: {exported_path}")
+        if engine_dest.exists():
+            export_ok = True
+            print(f"✓ Compilação via Ultralytics concluída!")
     except Exception as e:
-        print(f"\n❌ Falha na compilação do TensorRT: {e}")
-        print("\n💡 Dica de resolução no Nobara/Fedora Linux:")
-        print("1. Certifique-se de que o pacote tensorrt está instalado no venv: pip install tensorrt")
-        print("2. Verifique se o driver NVIDIA e o CUDA Toolkit estão atualizados.")
-        sys.exit(1)
+        print(f"⚠️ Ultralytics export falhou ({e}). Tentando compilação direta via TensorRT C++/Python API...")
+
+    # Tentativa 2: Compilação Nativa direta via TensorRT API (sem dependência de modelopt)
+    if not export_ok:
+        try:
+            # 1. Garante que temos o modelo ONNX
+            if not onnx_dest.exists():
+                print("Exportando modelo base para ONNX...")
+                model.export(format="onnx", imgsz=640, dynamic=False, opset=17, verbose=False)
+
+            print("🔨 Compilando ONNX diretamente para engine TensorRT FP16 (Turing GTX 1660)...")
+            logger = trt.Logger(trt.Logger.WARNING)
+            builder = trt.Builder(logger)
+            network = builder.create_network(1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))
+            parser = trt.OnnxParser(network, logger)
+
+            with open(onnx_dest, "rb") as f:
+                if not parser.parse(f.read()):
+                    for error in range(parser.num_errors):
+                        print("Erro do parser TRT:", parser.get_error(error))
+                    raise RuntimeError("Falha ao analisar o arquivo ONNX com TensorRT.")
+
+            config = builder.create_builder_config()
+            config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, 4 * 1024 * 1024 * 1024)
+            if builder.platform_has_fast_fp16:
+                config.set_flag(trt.BuilderFlag.FP16)
+                print("✓ Modo de meia-precisão FP16 habilitado com sucesso.")
+
+            serialized_engine = builder.build_serialized_network(network, config)
+            if serialized_engine is None:
+                raise RuntimeError("O construtor do TensorRT retornou None ao gerar a engine.")
+
+            with open(engine_dest, "wb") as f:
+                f.write(serialized_engine)
+
+            export_ok = True
+            print(f"✓ Engine TensorRT FP16 gerada com sucesso pela API nativa da NVIDIA!")
+        except Exception as trt_err:
+            print(f"\n❌ Falha na compilação nativa do TensorRT: {trt_err}")
+            sys.exit(1)
+
+    export_duration = time.time() - start_export
+    print(f"✓ Concluído em {export_duration:.1f}s! Arquivo: {engine_dest}")
 
     # 5. Benchmark de Velocidade Real: PyTorch (.pt) vs TensorRT (.engine)
     print("\n" + "=" * 60)
