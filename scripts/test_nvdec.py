@@ -109,6 +109,22 @@ def test_camera_stream():
     fps_cpu = frames_cpu / elapsed_cpu if elapsed_cpu > 0 else 0
     print(f"✓ CPU Decode: {frames_cpu} frames lidos em {elapsed_cpu:.2f}s ({fps_cpu:.1f} FPS)")
 
+    # Função auxiliar para ler decodificador na GPU via nvidia-smi
+    def get_gpu_decoder_utilization():
+        try:
+            res = subprocess.run(
+                ["nvidia-smi", "--query-gpu=utilization.decoder,utilization.gpu", "--format=csv,noheader,nounits"],
+                capture_output=True, text=True, timeout=2
+            )
+            if res.returncode == 0:
+                parts = res.stdout.strip().split(",")
+                dec_util = parts[0].strip()
+                gpu_util = parts[1].strip() if len(parts) > 1 else "?"
+                return f"NVDEC: {dec_util}% | GPU Core: {gpu_util}%"
+        except Exception:
+            pass
+        return "N/A"
+
     # Teste 2: OpenCV com Opções FFmpeg NVDEC
     print("\n--- Teste B: OpenCV com Flag FFmpeg NVDEC (hwaccel;cuda) ---")
     orig_options = os.environ.get("OPENCV_FFMPEG_CAPTURE_OPTIONS", "")
@@ -120,16 +136,18 @@ def test_camera_stream():
     if cap_hw.isOpened():
         frames_hw = 0
         t_start_hw = time.time()
-        for _ in range(60):
+        for i in range(60):
             ret, frame = cap_hw.read()
             if ret:
                 frames_hw += 1
+                if i == 30:
+                    gpu_stat_b = get_gpu_decoder_utilization()
             else:
                 break
         elapsed_hw = time.time() - t_start_hw
         cap_hw.release()
         fps_hw = frames_hw / elapsed_hw if elapsed_hw > 0 else 0
-        print(f"✓ NVDEC Decode (OpenCV): {frames_hw} frames lidos em {elapsed_hw:.2f}s ({fps_hw:.1f} FPS)")
+        print(f"✓ NVDEC Decode (OpenCV env): {frames_hw} frames em {elapsed_hw:.2f}s ({fps_hw:.1f} FPS) [{gpu_stat_b if 'gpu_stat_b' in locals() else 'N/A'}]")
     else:
         print("⚠️ OpenCV não conseguiu inicializar com opções hwaccel;cuda.")
 
@@ -138,6 +156,35 @@ def test_camera_stream():
         os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = orig_options
     else:
         os.environ.pop("OPENCV_FFMPEG_CAPTURE_OPTIONS", None)
+
+    # Teste 2.1: OpenCV com parâmetros diretos CAP_PROP_HW_ACCELERATION
+    print("\n--- Teste B.2: OpenCV com CAP_PROP_HW_ACCELERATION (VIDEO_ACCELERATION_ANY) ---")
+    try:
+        cap_hw_prop = cv2.VideoCapture(
+            rtsp_url,
+            cv2.CAP_FFMPEG,
+            [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_ANY, cv2.CAP_PROP_HW_DEVICE, 0]
+        )
+        cap_hw_prop.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        if cap_hw_prop.isOpened():
+            frames_prop = 0
+            t_start_prop = time.time()
+            for i in range(60):
+                ret, frame = cap_hw_prop.read()
+                if ret:
+                    frames_prop += 1
+                    if i == 30:
+                        gpu_stat_prop = get_gpu_decoder_utilization()
+                else:
+                    break
+            elapsed_prop = time.time() - t_start_prop
+            cap_hw_prop.release()
+            fps_prop = frames_prop / elapsed_prop if elapsed_prop > 0 else 0
+            print(f"✓ Direct Prop Decode: {frames_prop} frames em {elapsed_prop:.2f}s ({fps_prop:.1f} FPS) [{gpu_stat_prop if 'gpu_stat_prop' in locals() else 'N/A'}]")
+        else:
+            print("⚠️ OpenCV não abriu com CAP_PROP_HW_ACCELERATION.")
+    except Exception as e_prop:
+        print(f"⚠️ Erro ao testar CAP_PROP_HW_ACCELERATION: {e_prop}")
 
     # Teste 3: FFmpeg Nativo Pipe NVDEC
     print("\n--- Teste C: FFmpeg Nativo com NVDEC (Pipe Subprocess) ---")
