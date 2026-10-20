@@ -90,11 +90,13 @@ class StreamManager:
 
         self._event_listeners -= dead_queues
 
-        # Notificação assíncrona desacoplada para o bot do Telegram
+        # Notificação assíncrona desacoplada para os bots do Telegram
         try:
-            from app.bot import telegram_bot
+            from app.bot import telegram_bot, telegram_critical_bot
             if telegram_bot.is_active:
                 asyncio.create_task(telegram_bot.send_alert(event))
+            if telegram_critical_bot.is_active:
+                asyncio.create_task(telegram_critical_bot.send_alert(event))
         except Exception as err:
             logger.debug(f"Erro ao encaminhar evento para Telegram: {err}")
 

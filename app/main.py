@@ -33,11 +33,13 @@ async def lifespan(app: FastAPI):
     # Inicia captura de câmeras e loop de inferência
     stream_manager.start()
 
-    # Inicia bot do Telegram desacoplado (se ativado no .env)
+    # Inicia bots do Telegram desacoplados (se ativados no .env)
+    from app.bot import telegram_bot, telegram_critical_bot
     try:
         await telegram_bot.start()
+        await telegram_critical_bot.start()
     except Exception as e:
-        logger.warning(f"Falha ao iniciar bot do Telegram: {e}")
+        logger.warning(f"Falha ao iniciar bots do Telegram: {e}")
 
     logger.info(f"Sentinela Vision pronto e operando na porta {settings.port}")
 
@@ -47,6 +49,7 @@ async def lifespan(app: FastAPI):
     logger.info("Encerrando Sentinela Vision...")
     try:
         await telegram_bot.stop()
+        await telegram_critical_bot.stop()
     except Exception as e:
         logger.debug(f"Erro ao finalizar Telegram: {e}")
     stream_manager.stop()

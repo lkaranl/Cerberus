@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     stream_max_width: int = Field(default=1440, alias="STREAM_MAX_WIDTH")
     stream_quality: int = Field(default=85, alias="STREAM_QUALITY")
 
-    # Módulo de Notificação & Bot do Telegram
+    # Módulo de Notificação & Bot do Telegram (Bot 1 - Feed Geral / Silencioso)
     telegram_enabled: bool = Field(default=False, alias="TELEGRAM_ENABLED")
     telegram_bot_token: str = Field(default="", alias="TELEGRAM_BOT_TOKEN")
     telegram_chat_id: str = Field(default="", alias="TELEGRAM_CHAT_ID")
@@ -68,6 +68,16 @@ class Settings(BaseSettings):
     telegram_notify_vehicle: bool = Field(default=True, alias="TELEGRAM_NOTIFY_VEHICLE")
     telegram_notify_pet: bool = Field(default=False, alias="TELEGRAM_NOTIFY_PET")
     telegram_send_both_photos: bool = Field(default=True, alias="TELEGRAM_SEND_BOTH_PHOTOS")
+
+    # Módulo de Inteligência Artificial Contextual (OpenRouter) & Bot Crítico (Bot 2 - Alertas Prioritários)
+    openrouter_api_key: str = Field(default="", alias="OPENROUTER_API_KEY")
+    openrouter_model: str = Field(default="google/gemini-2.5-flash", alias="OPENROUTER_MODEL")
+    openrouter_timeout: float = Field(default=12.0, alias="OPENROUTER_TIMEOUT")
+
+    # Bot 2 - Canal de Alertas Críticos (Notificação com Som / Prioridade Máxima)
+    telegram_critical_enabled: bool = Field(default=False, alias="TELEGRAM_CRITICAL_ENABLED")
+    telegram_critical_bot_token: str = Field(default="", alias="TELEGRAM_CRITICAL_BOT_TOKEN")
+    telegram_critical_chat_id: str = Field(default="", alias="TELEGRAM_CRITICAL_CHAT_ID")
 
     def resolve_device(self) -> str:
         """
