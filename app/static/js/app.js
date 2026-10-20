@@ -274,11 +274,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
       try {
         const imageBitmap = await createImageBitmap(event.data);
-        if (firstFrame) {
-          if (placeholder) placeholder.classList.add("hidden");
+        if (canvas.width !== imageBitmap.width || canvas.height !== imageBitmap.height) {
           canvas.width = imageBitmap.width;
           canvas.height = imageBitmap.height;
-          firstFrame = false;
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = "high";
+          if (placeholder) placeholder.classList.add("hidden");
         }
 
         ctx.drawImage(imageBitmap, 0, 0, canvas.width, canvas.height);

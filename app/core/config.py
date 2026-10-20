@@ -55,9 +55,10 @@ class Settings(BaseSettings):
     use_nvdec: bool = Field(default=True, alias="USE_NVDEC")
     nvdec_device: int = Field(default=0, alias="NVDEC_DEVICE")
 
-    # Otimização para Clientes Fracos / Leves (Server-Side Downscaling do Stream)
-    stream_max_width: int = Field(default=960, alias="STREAM_MAX_WIDTH")
-    stream_quality: int = Field(default=75, alias="STREAM_QUALITY")
+    # Resolução do Stream Web (Server-Side Streaming)
+    # 1440 = Quad HD (texto e detalhes cristalinos); 0 = resolução nativa sem redimensionamento
+    stream_max_width: int = Field(default=1440, alias="STREAM_MAX_WIDTH")
+    stream_quality: int = Field(default=85, alias="STREAM_QUALITY")
 
     def resolve_device(self) -> str:
         """

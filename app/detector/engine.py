@@ -148,6 +148,17 @@ class YOLODetectorEngine:
         """Desenha bounding boxes com esquemas de cores específicos por tipo de entidade."""
         annotated_frame = frame.copy()
 
+        h_img, w_img = annotated_frame.shape[:2]
+        # Escala adaptativa para resoluções altas (1080p, 2K e 4K)
+        # Em 2304x1296, scale_factor é ~1.8, gerando texto e bordas 100% nítidos e legíveis
+        scale_factor = max(1.0, w_img / 1280.0)
+        box_thickness = max(2, int(round(2.5 * scale_factor)))
+        font_scale = 0.58 * scale_factor
+        font_thickness = max(1, int(round(1.8 * scale_factor)))
+        pad_x = int(8 * scale_factor)
+        pad_y = int(6 * scale_factor)
+        border_thick = max(1, int(round(1.2 * scale_factor)))
+
         for det in detections:
             x1, y1, x2, y2 = det["bbox"]
             conf_val = det["confidence"]
@@ -187,20 +198,26 @@ class YOLODetectorEngine:
                 plate_tag = f" [{plate}]" if plate else ""
                 label_text = f"{class_label} {id_tag}{plate_tag}{status_tag} ({int(conf_val * 100)}%)"
 
-            # Desenha a caixa
-            cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), box_color, 2)
+            # Desenha a caixa com espessura proporcional à resolução
+            cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), box_color, box_thickness)
 
             font = cv2.FONT_HERSHEY_SIMPLEX
-            font_scale = 0.52
-            font_thickness = 1
-            (text_w, text_h), _ = cv2.getTextSize(label_text, font, font_scale, font_thickness)
+            (text_w, text_h), baseline = cv2.getTextSize(label_text, font, font_scale, font_thickness)
 
-            label_y1 = max(0, y1 - text_h - 8)
-            label_y2 = y1
-            label_x1 = x1
-            label_x2 = x1 + text_w + 10
+            # Posicionamento inteligente para evitar corte no topo da imagem
+            if (y1 - text_h - (pad_y * 2)) < 0:
+                label_y1 = y1
+                label_y2 = y1 + text_h + (pad_y * 2)
+                text_y = label_y2 - pad_y
+            else:
+                label_y1 = y1 - text_h - (pad_y * 2)
+                label_y2 = y1
+                text_y = label_y2 - pad_y
 
-            # Fundo escuro do rótulo
+            label_x1 = max(0, x1)
+            label_x2 = min(w_img, label_x1 + text_w + (pad_x * 2))
+
+            # Fundo escuro contrastante (Deep Slate #0F141C)
             cv2.rectangle(
                 annotated_frame,
                 (label_x1, label_y1),
@@ -208,19 +225,19 @@ class YOLODetectorEngine:
                 (15, 20, 28),
                 -1
             )
-            # Borda do rótulo
+            # Borda do rótulo na cor da categoria
             cv2.rectangle(
                 annotated_frame,
                 (label_x1, label_y1),
                 (label_x2, label_y2),
                 box_color,
-                1
+                border_thick
             )
-            # Texto
+            # Texto nítido com anti-aliasing
             cv2.putText(
                 annotated_frame,
                 label_text,
-                (label_x1 + 5, label_y2 - 4),
+                (label_x1 + pad_x, text_y),
                 font,
                 font_scale,
                 (255, 255, 255),
