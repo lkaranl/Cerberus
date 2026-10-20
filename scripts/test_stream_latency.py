@@ -121,6 +121,7 @@ def main():
         else:
             status = "⚠️ Instável / Perda de Frames"
 
+        cam_label = f"{c['name']} [{backend_status.get(cid, 'NVDEC ⚡')}]"
         print(f"{cam_label:<32} | {count:<8} | {real_fps:>6.1f} FPS  | {jitter:>8.1f} ms   | {status}")
 
     print("=" * 75)
