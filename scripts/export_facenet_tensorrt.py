@@ -65,23 +65,29 @@ def main():
     dummy_input = torch.randn(1, 3, 160, 160, device=device)
 
     try:
-        torch.onnx.export(
-            resnet,
-            dummy_input,
-            str(onnx_dest),
-            export_params=True,
-            opset_version=17,
-            do_constant_folding=True,
-            input_names=["input"],
-            output_names=["embedding"],
-            dynamic_axes={
+        export_kwargs = {
+            "export_params": True,
+            "opset_version": 17,
+            "do_constant_folding": True,
+            "input_names": ["input"],
+            "output_names": ["embedding"],
+            "dynamic_axes": {
                 "input": {0: "batch_size"},
                 "embedding": {0: "batch_size"}
             }
-        )
+        }
+        # No PyTorch 2.x, forçar dynamo=False utiliza o exportador TorchScript (dispensando onnxscript)
+        try:
+            torch.onnx.export(resnet, dummy_input, str(onnx_dest), dynamo=False, **export_kwargs)
+        except (TypeError, ValueError):
+            torch.onnx.export(resnet, dummy_input, str(onnx_dest), **export_kwargs)
+
         print(f"✓ Modelo ONNX salvo com sucesso em: {onnx_dest} ({onnx_dest.stat().st_size / 1024**2:.1f} MB)")
     except Exception as onnx_err:
         print(f"❌ Erro ao exportar para ONNX: {onnx_err}")
+        if "onnxscript" in str(onnx_err):
+            print("\n💡 Para resolver, instale o pacote onnxscript no ambiente virtual:")
+            print("   pip install onnxscript\n")
         sys.exit(1)
 
     # 5. Compilação Nativa para TensorRT FP16 via NVIDIA TensorRT 11.4
