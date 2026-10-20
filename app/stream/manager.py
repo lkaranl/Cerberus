@@ -179,9 +179,21 @@ class StreamManager:
                 else:
                     annotated_frame = detector_engine.draw_annotations(raw_frame, detections)
 
+                # Redimensiona no servidor para resolução leve antes de codificar (alivia CPU/RAM do cliente fraco)
+                h_ann, w_ann = annotated_frame.shape[:2]
+                if settings.stream_max_width > 0 and w_ann > settings.stream_max_width:
+                    scale = settings.stream_max_width / w_ann
+                    stream_frame = cv2.resize(
+                        annotated_frame,
+                        (settings.stream_max_width, int(h_ann * scale)),
+                        interpolation=cv2.INTER_AREA
+                    )
+                else:
+                    stream_frame = annotated_frame
+
                 # Codifica o frame anotado para JPEG otimizado
-                encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 80]
-                success, buffer = cv2.imencode(".jpg", annotated_frame, encode_param)
+                encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), settings.stream_quality]
+                success, buffer = cv2.imencode(".jpg", stream_frame, encode_param)
                 if success:
                     jpeg_bytes = buffer.tobytes()
                     self.latest_annotated_jpeg[cam.id] = jpeg_bytes

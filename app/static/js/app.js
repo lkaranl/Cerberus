@@ -495,6 +495,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (isNew) {
       dom.eventsList.prepend(card);
+      // Mantém o DOM do cliente leve removendo elementos antigos que saem da tela
+      while (dom.eventsList.children.length > 40) {
+        dom.eventsList.removeChild(dom.eventsList.lastChild);
+      }
       // Pré-carrega imediatamente o alerta mais recente para abertura instantânea
       prefetchEventImages(evt.event_id || evt.id);
     } else {
