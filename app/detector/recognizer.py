@@ -196,8 +196,8 @@ class FaceRecognizer:
         box_h = y2 - y1
         box_w = x2 - x1
 
-        # Região da cabeça/busto (45% superiores da pessoa)
-        head_y2 = min(y2, y1 + int(box_h * 0.45))
+        # Região da cabeça/busto (60% superiores da pessoa para cobrir fotos de meio corpo e corpo inteiro)
+        head_y2 = min(y2, y1 + int(box_h * 0.60))
         pad_x = int(box_w * 0.15)
         crop_x1 = max(0, x1 - pad_x)
         crop_x2 = min(w, x2 + pad_x)
@@ -215,12 +215,19 @@ class FaceRecognizer:
             try:
                 faces = self.insight_app.get(head_crop)
                 if not faces:
+                    # Se não detectou no corte restrito, tenta na bounding box completa da pessoa
+                    body_crop = frame_bgr[y1:y2, x1:x2]
+                    if body_crop.size > 0:
+                        faces = self.insight_app.get(body_crop)
+                        crop_x1, crop_y1 = x1, y1
+
+                if not faces:
                     return "Desconhecido", 0.0, False, None
 
                 # Filtra rosto válido com maior score
                 best_face = None
                 for face in faces:
-                    if face.det_score < 0.65:
+                    if face.det_score < 0.60:
                         continue
                     bx1, by1, bx2, by2 = face.bbox
                     fx1 = max(0, int(crop_x1 + bx1))
@@ -232,9 +239,9 @@ class FaceRecognizer:
                     fh = fy2 - fy1
 
                     # Filtro anatômico: tamanho mínimo e proporção humana
-                    if fw >= 20 and fh >= 20 and 0.60 <= (fw / float(fh)) <= 1.45:
+                    if fw >= 20 and fh >= 20 and 0.55 <= (fw / float(fh)) <= 1.55:
                         face_center_y = (fy1 + fy2) / 2.0
-                        body_top_limit = y1 + (box_h * 0.42)
+                        body_top_limit = y1 + (box_h * 0.65)
                         if face_center_y <= body_top_limit:
                             best_face = face
                             face_bbox_global = (fx1, fy1, fx2, fy2)
