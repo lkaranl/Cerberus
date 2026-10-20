@@ -104,10 +104,14 @@ def main():
         elif hasattr(config, "max_workspace_size"):
             config.max_workspace_size = 4 * 1024 * 1024 * 1024
 
-        # Habilita FP16 nativo (Half Precision na arquitetura Turing)
-        config.set_flag(trt.BuilderFlag.FP16)
-        print("✓ Otimização FP16 ativada na GPU.")
+        # Habilita FP16 nativo se a flag existir (no TensorRT 8/9/10). No TensorRT 11, é fortemente tipado nativo.
+        if hasattr(trt.BuilderFlag, "FP16"):
+            config.set_flag(trt.BuilderFlag.FP16)
+            print("✓ Otimização FP16 ativada na GPU.")
+        else:
+            print("✓ TensorRT 11+ detectado: Compilação e precisão otimizadas nativamente pelo grafo.")
 
+        print("⚡ Compilando rede neural serializada no hardware...")
         if hasattr(builder, "build_serialized_network"):
             serialized_engine = builder.build_serialized_network(network, config)
         else:
@@ -124,8 +128,16 @@ def main():
         print(f"✅ Engine compilada em {comp_duration:.1f}s com sucesso: {engine_dest}")
 
     except Exception as e:
-        print(f"❌ Falha ao compilar engine TensorRT nativa: {e}")
-        sys.exit(1)
+        print(f"⚠️ Aviso na compilação direta ({e}). Tentando exportação direta via Ultralytics TensorRT...")
+        try:
+            exp_engine = model.export(format="engine", half=True, device=0, imgsz=640, verbose=False)
+            if Path(exp_engine) != engine_dest and Path(exp_engine).exists():
+                import shutil
+                shutil.move(exp_engine, str(engine_dest))
+            print(f"✅ Engine gerada com sucesso via Ultralytics: {engine_dest}")
+        except Exception as e_ultra:
+            print(f"❌ Falha fatal ao compilar engine TensorRT: {e_ultra}")
+            sys.exit(1)
 
     # 6. Benchmark de Desempenho Real (FPS & Latência)
     print("\n" + "=" * 65)
