@@ -650,7 +650,8 @@ class CameraTrackerManager:
                     "is_known": track.is_known,
                     "face_confidence": track.match_confidence,
                     "entity_type": track.entity_type,
-                    "license_plate": track.license_plate
+                    "license_plate": track.license_plate,
+                    "has_face_captured": track.has_face_captured
                 }
 
                 # Persistência assíncrona no SQLite (24/7 autônomo)
@@ -729,7 +730,10 @@ class CameraTrackerManager:
                     "person_name": track.identity_name,
                     "is_known": track.is_known,
                     "face_confidence": track.match_confidence,
-                    "entity_type": track.entity_type
+                    "entity_type": track.entity_type,
+                    "crop_path": track.event_crop_path,
+                    "full_path": track.event_full_path,
+                    "has_face_captured": True
                 }
                 if self.event_callback:
                     try:

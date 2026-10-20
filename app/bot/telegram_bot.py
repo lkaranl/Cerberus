@@ -125,11 +125,21 @@ class TelegramBot:
         if entity_type == "pet" and not settings.telegram_notify_pet:
             return False
 
+        # REGRA DE OURO: No Telegram só enviamos a foto do ROSTO da pessoa!
+        # Se a pessoa entrou de costas (sem rosto ainda capturado), não enviamos a nuca.
+        # Aguardamos ela virar de frente ou retornar para disparar com a foto frontal.
+        is_upgrade = (event.get("_msg_type") == "EVENT_UPDATED")
+        has_face = event.get("has_face_captured", False)
+
+        if entity_type == "person" and not has_face and not is_upgrade:
+            logger.debug("ℹ️ Telegram: Alerta inicial suprimido por estar de costas (aguardando foto do rosto).")
+            return False
+
         # Caso especial: Upgrade de Evidência (a pessoa mostrou o rosto após alerta inicial de costas)
-        if event.get("_msg_type") == "EVENT_UPDATED":
+        if is_upgrade:
             return await self._send_upgrade_notice(event, chat_id)
 
-        # Formatação do novo alerta
+        # Formatação do alerta com foco no rosto/alvo
         category_icons = {"person": "👤", "vehicle": "🚗", "pet": "🐾"}
         icon = category_icons.get(entity_type, "🎯")
 
@@ -150,7 +160,7 @@ class TelegramBot:
             hora_fmt = ts_str
 
         caption = (
-            f"🚨 <b>ALERTA DE SEGURANÇA - CERBERUS</b>\n\n"
+            f"🚨 <b>ALERTA DE ROSTO - CERBERUS</b>\n\n"
             f"📹 <b>Câmera:</b> {event.get('camera_name', 'Câmera')}\n"
             f"{icon} <b>Alvo:</b> {name}{face_pct} ({known_badge}){plate_str}\n"
             f"🕒 <b>Horário:</b> {hora_fmt}\n"
@@ -159,38 +169,35 @@ class TelegramBot:
         )
 
         crop_path = event.get("crop_path")
+
+        # No Telegram enviamos EXCLUSIVAMENTE a imagem recortada do rosto:
+        if crop_path and Path(crop_path).exists():
+            return await self._send_single_photo(chat_id, Path(crop_path), caption)
+
         full_path = event.get("full_path")
+        if full_path and Path(full_path).exists():
+            return await self._send_single_photo(chat_id, Path(full_path), caption)
 
-        # Tenta enviar álbum completo (recorte detalhado + cena inteira)
-        if settings.telegram_send_both_photos and crop_path and full_path:
-            p_crop = Path(crop_path)
-            p_full = Path(full_path)
-            if p_crop.exists() and p_full.exists():
-                return await self._send_media_group(chat_id, p_crop, p_full, caption)
-
-        # Fallback para envio de foto única (prioriza o recorte do alvo)
-        target_img = crop_path if (crop_path and Path(crop_path).exists()) else full_path
-        if target_img and Path(target_img).exists():
-            return await self._send_single_photo(chat_id, Path(target_img), caption)
-
-        # Se não houver foto em disco, envia mensagem de texto
         return await self._send_text_message(chat_id, caption)
 
     async def _send_upgrade_notice(self, event: Dict[str, Any], chat_id: str) -> bool:
-        """Envia aviso quando o sistema capturou o rosto nítido de uma pessoa vista antes de costas."""
+        """Envia a foto do rosto assim que a pessoa que estava de costas vira para a câmera."""
         name = event.get("person_name", "Desconhecido")
         face_conf = event.get("face_confidence", 0.0)
         face_pct = f" ({int(face_conf * 100)}%)" if face_conf > 0 else ""
+        is_known = event.get("is_known", False)
+        known_badge = "✅ Reconhecido" if is_known else "⚠️ Desconhecido"
 
         caption = (
-            f"📸 <b>UPGRADE FACIAL - ROSTO IDENTIFICADO!</b>\n\n"
+            f"👤 <b>ROSTO IDENTIFICADO - CERBERUS</b>\n\n"
             f"📹 <b>Câmera:</b> {event.get('camera_name', 'Câmera')}\n"
-            f"👤 <b>Identidade Confirmada:</b> <b>{name}</b>{face_pct}\n"
-            f"🆔 <b>Evento Atualizado:</b> <code>{event.get('event_id', '')}</code>\n"
-            f"✨ <i>O recorte da nuca foi substituído pela foto frontal do rosto.</i>"
+            f"🎯 <b>Alvo:</b> <b>{name}</b>{face_pct} ({known_badge})\n"
+            f"🕒 <b>Horário:</b> {datetime.now().strftime('%d/%m/%Y às %H:%M:%S')}\n"
+            f"🆔 <b>Evento:</b> <code>{event.get('event_id', '')}</code>\n"
+            f"✨ <i>Rosto capturado com sucesso ao virar para a câmera.</i>"
         )
 
-        # Se houver recorte recente salvo, envia a nova foto do rosto
+        # Envia estritamente a foto nítida do rosto em alta resolução
         crop_path = event.get("crop_path")
         if crop_path and Path(crop_path).exists():
             return await self._send_single_photo(chat_id, Path(crop_path), caption)
