@@ -14,6 +14,9 @@ from app.api.routes import router
 from app.api.websocket import ws_router
 
 
+from app.bot import telegram_bot
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # --- Startup ---
@@ -29,12 +32,23 @@ async def lifespan(app: FastAPI):
 
     # Inicia captura de câmeras e loop de inferência
     stream_manager.start()
+
+    # Inicia bot do Telegram desacoplado (se ativado no .env)
+    try:
+        await telegram_bot.start()
+    except Exception as e:
+        logger.warning(f"Falha ao iniciar bot do Telegram: {e}")
+
     logger.info(f"Sentinela Vision pronto e operando na porta {settings.port}")
 
     yield
 
     # --- Shutdown ---
     logger.info("Encerrando Sentinela Vision...")
+    try:
+        await telegram_bot.stop()
+    except Exception as e:
+        logger.debug(f"Erro ao finalizar Telegram: {e}")
     stream_manager.stop()
     logger.info("Sentinela Vision finalizado com sucesso.")
 

@@ -60,6 +60,15 @@ class Settings(BaseSettings):
     stream_max_width: int = Field(default=1440, alias="STREAM_MAX_WIDTH")
     stream_quality: int = Field(default=85, alias="STREAM_QUALITY")
 
+    # Módulo de Notificação & Bot do Telegram
+    telegram_enabled: bool = Field(default=False, alias="TELEGRAM_ENABLED")
+    telegram_bot_token: str = Field(default="", alias="TELEGRAM_BOT_TOKEN")
+    telegram_chat_id: str = Field(default="", alias="TELEGRAM_CHAT_ID")
+    telegram_notify_person: bool = Field(default=True, alias="TELEGRAM_NOTIFY_PERSON")
+    telegram_notify_vehicle: bool = Field(default=True, alias="TELEGRAM_NOTIFY_VEHICLE")
+    telegram_notify_pet: bool = Field(default=False, alias="TELEGRAM_NOTIFY_PET")
+    telegram_send_both_photos: bool = Field(default=True, alias="TELEGRAM_SEND_BOTH_PHOTOS")
+
     def resolve_device(self) -> str:
         """
         Resolve dinamicamente o melhor dispositivo de inferência disponível,

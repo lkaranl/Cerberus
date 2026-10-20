@@ -78,7 +78,7 @@ class StreamManager:
         return cameras
 
     async def _on_event_triggered(self, event: Dict[str, Any]) -> None:
-        """Notifica todos os listeners de WebSocket sobre novas detecções."""
+        """Notifica todos os listeners de WebSocket e despacha alerta ao Telegram."""
         dead_queues = set()
         for q in self._event_listeners:
             try:
@@ -89,6 +89,14 @@ class StreamManager:
                 dead_queues.add(q)
 
         self._event_listeners -= dead_queues
+
+        # Notificação assíncrona desacoplada para o bot do Telegram
+        try:
+            from app.bot import telegram_bot
+            if telegram_bot.is_active:
+                asyncio.create_task(telegram_bot.send_alert(event))
+        except Exception as err:
+            logger.debug(f"Erro ao encaminhar evento para Telegram: {err}")
 
     def register_event_listener(self) -> asyncio.Queue:
         q: asyncio.Queue = asyncio.Queue(maxsize=100)
