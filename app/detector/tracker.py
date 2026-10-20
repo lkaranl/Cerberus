@@ -132,6 +132,10 @@ class CameraTrackerManager:
 
         # Cooldown temporal por chave de entidade (ex: cam-0_person_Desconhecido -> timestamp)
         self.last_alert_time: Dict[str, float] = {}
+        self.last_alert_had_face: Dict[str, bool] = {}
+
+        # Fila de eventos recentes pendentes de rosto (quando a pessoa entrou de costas e aguarda virar de frente)
+        self.pending_face_upgrades: List[Dict[str, Any]] = []
 
     def _calculate_iou(self, boxA: Tuple[int, int, int, int], boxB: Tuple[int, int, int, int]) -> float:
         """Calcula Intersection over Union (IoU) entre duas caixas delimitadoras."""
@@ -198,7 +202,12 @@ class CameraTrackerManager:
                     "entity_type": track.entity_type,
                     "is_known": track.is_known,
                     "license_plate": track.license_plate,
-                    "is_stationary": track.is_stationary
+                    "is_stationary": track.is_stationary,
+                    "active_event_id": track.active_event_id,
+                    "event_crop_path": track.event_crop_path,
+                    "event_full_path": track.event_full_path,
+                    "event_web_path": track.event_web_path,
+                    "has_face_captured": track.has_face_captured,
                 })
                 # Se estava estacionado, preserva nas âncoras da vaga
                 if track.is_stationary:
@@ -369,12 +378,17 @@ class CameraTrackerManager:
                     new_track.license_plate = inherited["license_plate"]
                     new_track.event_triggered = inherited["event_triggered"]
                     new_track.is_stationary = inherited.get("is_stationary", False)
+                    new_track.active_event_id = inherited.get("active_event_id")
+                    new_track.event_crop_path = inherited.get("event_crop_path")
+                    new_track.event_full_path = inherited.get("event_full_path")
+                    new_track.event_web_path = inherited.get("event_web_path")
+                    new_track.has_face_captured = inherited.get("has_face_captured", False)
                     if new_track.is_stationary:
                         new_track.stationary_anchor_pos = ((bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0)
                     new_track.consecutive_frames = settings.min_consecutive_frames  # Já considera estável
                     logger.debug(
                         f"🔄 Herança de Rastro: ID #{tid} herdou estado de #{inherited['tracking_id']} "
-                        f"({new_track.identity_name}, estacionado={new_track.is_stationary}) em {self.camera_name}"
+                        f"({new_track.identity_name}, evento={new_track.active_event_id}) em {self.camera_name}"
                     )
 
                 self.active_tracks[tid] = new_track
@@ -386,8 +400,12 @@ class CameraTrackerManager:
             if track.is_stationary:
                 self._update_parked_anchor(track, bbox)
 
-            # --- Identificação Contínua (não desiste nos primeiros frames se o alvo estiver de costas) ---
-            should_eval = not track.is_known and (track.eval_count < 3 or track.consecutive_frames % 2 == 0)
+            # --- Identificação Contínua (não desiste enquanto não capturar o rosto frontal) ---
+            if entity_type == "person":
+                should_eval = (not track.has_face_captured) or (not track.is_known and track.consecutive_frames % 2 == 0)
+            else:
+                should_eval = not track.is_known and (track.eval_count < 3 or track.consecutive_frames % 2 == 0)
+
             if should_eval:
                 track.eval_count += 1
                 crop_obj = self._extract_crop(raw_frame, bbox, margin_pct=0.05)
@@ -396,9 +414,25 @@ class CameraTrackerManager:
                     name, face_conf, is_known, face_bbox = face_recognizer.detect_and_identify_person(raw_frame, bbox)
                     if face_bbox is not None:
                         track.latest_face_bbox = face_bbox
-                        # Se já disparou o alerta inicial de costas e o rosto ainda não tinha sido capturado:
-                        if track.event_triggered and not track.has_face_captured:
+                        track.has_face_captured = True
+
+                        # Se este track já alertou de costas e aguardava rosto:
+                        if track.event_triggered and track.active_event_id:
                             track.needs_face_upgrade = True
+
+                        # Se for um novo track (ex: virou lá no fundo) mas há evento recente com nuca aguardando rosto:
+                        elif not track.active_event_id and self.pending_face_upgrades:
+                            pending = self.pending_face_upgrades.pop()
+                            track.active_event_id = pending["event_id"]
+                            track.event_crop_path = pending["crop_path"]
+                            track.event_full_path = pending["full_path"]
+                            track.event_web_path = pending["web_path"]
+                            track.event_triggered = True
+                            track.needs_face_upgrade = True
+                            logger.info(
+                                f"🔄 Rastro #{tid} vinculou-se ao evento pendente {pending['event_id']} "
+                                f"(substituindo recorte de nuca por foto do rosto) em {self.camera_name}"
+                            )
 
                     if is_known:
                         was_unknown = not track.is_known
@@ -407,7 +441,7 @@ class CameraTrackerManager:
                         track.is_known = True
                         track.match_confidence = face_conf
                         logger.info(f"👤 Rosto identificado em {self.camera_name}: {name} ({int(face_conf * 100)}%)")
-                        if had_alerted_unknown:
+                        if had_alerted_unknown and track.active_event_id:
                             track.needs_face_upgrade = True
 
                 elif entity_type == "vehicle":
@@ -538,15 +572,18 @@ class CameraTrackerManager:
                 if track.is_stationary:
                     self._update_parked_anchor(track, det["bbox"])
 
-                if not is_upgrade and elapsed_since_last_alert < settings.alert_cooldown_seconds:
+                # Se o último alerta nesta câmera foi sem rosto (de costas/nuca) e agora temos um rosto detectado,
+                # bypassa o cooldown para capturar e registrar a foto frontal!
+                last_had_face = self.last_alert_had_face.get(cooldown_key, False)
+                current_has_face = (track.entity_type == "person" and track.latest_face_bbox is not None)
+                bypass_cooldown = is_upgrade or (not last_had_face and current_has_face)
+
+                if not bypass_cooldown and elapsed_since_last_alert < settings.alert_cooldown_seconds:
                     logger.debug(
                         f"⏳ Alerta suprimido por cooldown ({int(elapsed_since_last_alert)}s / {settings.alert_cooldown_seconds}s): "
                         f"{self.camera_name} - {track.identity_name}"
                     )
                     continue
-
-                # Registra o novo alerta e atualiza timestamp de cooldown
-                self.last_alert_time[cooldown_key] = now
 
                 event_id = f"evt_{uuid.uuid4().hex[:12]}"
                 track.active_event_id = event_id
@@ -576,6 +613,24 @@ class CameraTrackerManager:
                     track.has_face_captured = (track.latest_face_bbox is not None)
                 else:
                     crop_img = self._extract_crop(raw_frame, track.best_bbox or det["bbox"], margin_pct=0.10)
+
+                # Registra o novo alerta e atualiza timestamp de cooldown e status de rosto
+                self.last_alert_time[cooldown_key] = now
+                self.last_alert_had_face[cooldown_key] = track.has_face_captured
+
+                # Se for pessoa e foi capturada de costas/nuca, entra na fila para upgrade facial quando virar/voltar
+                if track.entity_type == "person" and not track.has_face_captured:
+                    self.pending_face_upgrades.append({
+                        "event_id": event_id,
+                        "crop_path": crop_path,
+                        "full_path": full_path,
+                        "web_path": web_path,
+                        "timestamp": now,
+                        "tracking_id": tid
+                    })
+                    self.pending_face_upgrades = [
+                        up for up in self.pending_face_upgrades if (now - up["timestamp"]) < 60.0
+                    ]
 
                 # Salva recortes de evidência em background assíncrono (zero impacto no frame loop)
                 asyncio.create_task(
@@ -627,6 +682,12 @@ class CameraTrackerManager:
             ):
                 track.needs_face_upgrade = False
                 track.has_face_captured = True
+                self.last_alert_had_face[cooldown_key] = True
+
+                # Remove este evento da fila de pendentes
+                self.pending_face_upgrades = [
+                    up for up in self.pending_face_upgrades if up["event_id"] != track.active_event_id
+                ]
 
                 # Recorta o rosto nítido em close
                 face_crop_img = self._extract_person_crop(raw_frame, det["bbox"], face_bbox=track.latest_face_bbox)

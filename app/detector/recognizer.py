@@ -36,12 +36,12 @@ class FaceRecognizer:
             self.torch = torch
 
             logger.info(f"Carregando FaceNet (InceptionResnetV1) no dispositivo: {self.device}...")
-            # MTCNN otimizado para sensibilidade e alta velocidade na GPU
+            # MTCNN otimizado para sensibilidade e alta velocidade na GPU (detecta rostos à distância no corredor)
             self.mtcnn = MTCNN(
                 image_size=160,
                 margin=20,
-                min_face_size=32,
-                thresholds=[0.5, 0.6, 0.6],
+                min_face_size=20,
+                thresholds=[0.5, 0.55, 0.55],
                 keep_all=False,
                 select_largest=True,
                 device=self.device
@@ -196,9 +196,9 @@ class FaceRecognizer:
         if head_crop_bgr.size == 0:
             return "Desconhecido", 0.0, False, None
 
-        # Pré-downscale adaptativo do recorte (max 200px) para máxima velocidade do MTCNN
+        # Pré-downscale adaptativo do recorte (max 320px) preservando nitidez de rostos no fundo do corredor
         ch, cw = head_crop_bgr.shape[:2]
-        max_dim = 200
+        max_dim = 320
         scale = 1.0
         if max(ch, cw) > max_dim:
             scale = max_dim / max(ch, cw)

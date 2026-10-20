@@ -80,42 +80,57 @@ async def run_tracker_stress():
         t0 = time.perf_counter()
         detections = []
 
-        # Fase 1 (Frames 0 a 30): Pessoa caminhando
-        if f_idx < 30:
-            # Pessoa anda da esquerda para a direita
-            px1 = 200 + (f_idx * 15)
-            py1 = 400
-            px2 = px1 + 220
-            py2 = py1 + 650
-
-            det_person = {
-                "bbox": (px1, py1, px2, py2),
-                "confidence": 0.88,
-                "class_id": 0,
-                "class_label": "Pessoa",
-                "entity_type": "person",
-                "tracking_id": 101
-            }
-
-            # Simula que nos primeiros 10 frames a pessoa está de costas (sem rosto visível)
-            # A partir do frame 10, ela se vira de frente para a câmera!
-            head_x1 = px1 + 45
-            head_y1 = py1 + 20
-            head_x2 = px1 + 175
-            head_y2 = py1 + 190
-            hw = head_x2 - head_x1
-            hh = head_y2 - head_y1
-
-            if f_idx >= 10:
-                if real_face_img is not None:
-                    resized_face = cv2.resize(real_face_img, (hw, hh), interpolation=cv2.INTER_LINEAR)
-                    dummy_frame[head_y1:head_y2, head_x1:head_x2] = resized_face
-                else:
-                    dummy_frame[head_y1:head_y2, head_x1:head_x2] = np.random.randint(90, 240, (hh, hw, 3), dtype=np.uint8)
+        # Fase 1 (Frames 0 a 35): Pessoa no corredor (entra de costas, vira no fundo e volta de frente)
+        if f_idx < 35:
+            if f_idx < 15:
+                # Pessoa caminha para o fundo de costas (ID #101)
+                tid_person = 101
+                px1 = 300 + (f_idx * 20)
+                py1 = 450
+                px2 = px1 + 200
+                py2 = py1 + 600
+                is_facing_front = False
+            elif 15 <= f_idx < 18:
+                # Virando no fundo do corredor (perda momentânea de tracking por iluminação/distância)
+                tid_person = None
+                is_facing_front = False
             else:
-                dummy_frame[head_y1:head_y2, head_x1:head_x2] = (50, 40, 35)  # Costas
+                # Retorna caminhando de frente em direção à câmera (ID #102 - novo ID atribuído pelo detector)
+                tid_person = 102
+                ret_step = f_idx - 18
+                px1 = 600 - (ret_step * 18)
+                py1 = 450
+                px2 = px1 + 220
+                py2 = py1 + 650
+                is_facing_front = True
 
-            detections.append(det_person)
+            if tid_person is not None:
+                det_person = {
+                    "bbox": (px1, py1, px2, py2),
+                    "confidence": 0.88,
+                    "class_id": 0,
+                    "class_label": "Pessoa",
+                    "entity_type": "person",
+                    "tracking_id": tid_person
+                }
+
+                head_x1 = px1 + 45
+                head_y1 = py1 + 20
+                head_x2 = px1 + 175
+                head_y2 = py1 + 190
+                hw = head_x2 - head_x1
+                hh = head_y2 - head_y1
+
+                if is_facing_front:
+                    if real_face_img is not None:
+                        resized_face = cv2.resize(real_face_img, (hw, hh), interpolation=cv2.INTER_LINEAR)
+                        dummy_frame[head_y1:head_y2, head_x1:head_x2] = resized_face
+                    else:
+                        dummy_frame[head_y1:head_y2, head_x1:head_x2] = np.random.randint(90, 240, (hh, hw, 3), dtype=np.uint8)
+                else:
+                    dummy_frame[head_y1:head_y2, head_x1:head_x2] = (50, 40, 35)  # Costas / nuca
+
+                detections.append(det_person)
 
         # Fase 2 (Frames 35 a 90): Carro chega e estaciona
         if 35 <= f_idx < 90:
