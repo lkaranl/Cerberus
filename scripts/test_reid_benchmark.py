@@ -43,10 +43,17 @@ def main():
         person_reid.extract_embedding(dummy_crop)
 
     times = []
+    emb = None
     for _ in range(30):
         t_start = time.perf_counter()
-        emb = person_reid.extract_embedding(dummy_crop)
-        times.append((time.perf_counter() - t_start) * 1000)
+        res = person_reid.extract_embedding(dummy_crop)
+        if res is not None:
+            emb = res
+            times.append((time.perf_counter() - t_start) * 1000)
+
+    if emb is None:
+        print("❌ extract_embedding retornou None. Inspecione o erro detalhado acima.")
+        return
 
     avg_latency = float(np.mean(times))
     fps = 1000.0 / avg_latency if avg_latency > 0 else 0

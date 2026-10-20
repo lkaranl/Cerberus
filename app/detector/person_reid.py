@@ -97,11 +97,25 @@ class PersonReID:
             self.session = ort.InferenceSession(str(self.model_path), providers=providers)
             active_provider = self.session.get_providers()[0]
 
-            self.input_name = self.session.get_inputs()[0].name
-            self.output_name = self.session.get_outputs()[0].name
+            input_meta = self.session.get_inputs()[0]
+            output_meta = self.session.get_outputs()[0]
+            self.input_name = input_meta.name
+            self.output_name = output_meta.name
+            self.input_shape = input_meta.shape
+
+            # Determina altura e largura esperadas pelo modelo
+            # Padrão OSNet: (batch, 3, 256, 128)
+            req_h = 256
+            req_w = 128
+            if len(self.input_shape) == 4:
+                if isinstance(self.input_shape[2], int) and self.input_shape[2] > 0:
+                    req_h = self.input_shape[2]
+                if isinstance(self.input_shape[3], int) and self.input_shape[3] > 0:
+                    req_w = self.input_shape[3]
+            self.target_size = (req_w, req_h)
 
             self.is_ready = True
-            logger.info(f"⚡ Módulo Person Re-ID (OSNet x0.25) inicializado com sucesso via {active_provider}!")
+            logger.info(f"⚡ OSNet Re-ID inicializado via {active_provider}! Entrada: '{self.input_name}' {self.input_shape} -> Alvo: {self.target_size}")
             return True
 
         except Exception as e:
@@ -122,8 +136,9 @@ class PersonReID:
             if h < 20 or w < 10:
                 return None
 
-            # 1. Redimensionamento para o padrão de entrada do OSNet (256x128)
-            resized = cv2.resize(person_crop_bgr, (128, 256), interpolation=cv2.INTER_LINEAR)
+            # 1. Redimensionamento para o padrão esperado pelo modelo
+            target_w, target_h = getattr(self, "target_size", (128, 256))
+            resized = cv2.resize(person_crop_bgr, (target_w, target_h), interpolation=cv2.INTER_LINEAR)
             rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
 
             # 2. Normalização ImageNet (média e desvio padrão padrão do PyTorch/OSNet)
@@ -131,12 +146,12 @@ class PersonReID:
             std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
             normalized = (rgb - mean) / std
 
-            # 3. Transposição para formato Tensor (B, C, H, W) -> (1, 3, 256, 128)
+            # 3. Transposição para formato Tensor (B, C, H, W)
             blob = np.transpose(normalized, (2, 0, 1))
-            blob = np.expand_dims(blob, axis=0)
+            blob = np.expand_dims(blob, axis=0).astype(np.float32)
 
             # 4. Inferência via ONNX Runtime
-            outputs = self.session.run([self.output_name], {self.input_name: blob})
+            outputs = self.session.run(None, {self.input_name: blob})
             raw_emb = outputs[0].flatten().astype(np.float32)
 
             # 5. Normalização L2 (para comparação direta via produto escalar / cosseno)
@@ -149,7 +164,7 @@ class PersonReID:
             return emb
 
         except Exception as e:
-            logger.debug(f"Erro ao extrair embedding de Re-ID com OSNet: {e}")
+            logger.error(f"Erro ao extrair embedding de Re-ID com OSNet: {e}", exc_info=True)
             return None
 
     @staticmethod
