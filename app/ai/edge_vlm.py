@@ -75,9 +75,17 @@ class EdgeVLM:
             logger.info(f"⚡ Carregando Edge VLM [{model_id}] em {self.device} (FP16)...")
 
             if "smolvlm" in model_id.lower():
-                from transformers import AutoProcessor, AutoModelForVision2Seq
+                from transformers import AutoProcessor
+                try:
+                    from transformers import AutoModelForImageTextToText as AutoVLM
+                except ImportError:
+                    try:
+                        from transformers import AutoModelForVision2Seq as AutoVLM
+                    except ImportError:
+                        from transformers import AutoModelForCausalLM as AutoVLM
+
                 self.processor = AutoProcessor.from_pretrained(model_id)
-                self.model = AutoModelForVision2Seq.from_pretrained(
+                self.model = AutoVLM.from_pretrained(
                     model_id,
                     torch_dtype=torch_dtype
                 )
