@@ -15,6 +15,11 @@ import subprocess
 from pathlib import Path
 import numpy as np
 
+# Garante que a raiz do projeto esteja no sys.path
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 def print_header(title: str):
     print("\n" + "=" * 65)
     print(f"   {title}")
