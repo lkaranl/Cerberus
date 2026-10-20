@@ -95,9 +95,12 @@ def main():
         elif hasattr(config, "max_workspace_size"):
             config.max_workspace_size = 4 * 1024 * 1024 * 1024
 
-        if builder.platform_has_fast_fp16:
+        # Habilita FP16 nativo (suportado por padrão nas arquiteturas Turing GTX 1660 e superiores)
+        try:
             config.set_flag(trt.BuilderFlag.FP16)
             print("✓ Modo de meia-precisão FP16 habilitado na GPU GTX 1660.")
+        except Exception as fp16_warn:
+            print(f"⚠️ Aviso ao ativar flag FP16: {fp16_warn}")
 
         print("⚡ Otimizando e calibrando kernels CUDA Turing (GTX 1660)...")
         if hasattr(builder, "build_serialized_network"):
