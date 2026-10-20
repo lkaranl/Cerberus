@@ -8,9 +8,12 @@ import numpy as np
 from app.core.config import settings
 from app.core.logging import logger
 
-# URL oficial do modelo pré-treinado OSNet x0.25 (MSMT17 - surveillance dataset)
-OSNET_ONNX_URL = "https://github.com/mikel-brostrom/boxmot/releases/download/v10.0.81/osnet_x0_25_msmt17.onnx"
-OSNET_BACKUP_URL = "https://github.com/ultralytics/assets/releases/download/v8.2.0/osnet_x0_25_msmt17.onnx"
+# URLs oficiais e mirrors confiáveis do modelo pré-treinado OSNet x0.25 (MSMT17)
+OSNET_ONNX_URLS = [
+    "https://huggingface.co/anriha/osnet_x0_25_msmt17/resolve/main/osnet_x0_25_msmt17.onnx",
+    "https://github.com/mikel-brostrom/yolo_tracking/releases/download/v8.0/osnet_x0_25_msmt17.onnx",
+    "https://github.com/mikel-brostrom/boxmot/releases/download/v10.0.81/osnet_x0_25_msmt17.pt"
+]
 
 class PersonReID:
     """
@@ -47,23 +50,33 @@ class PersonReID:
 
     def _download_model_if_needed(self) -> bool:
         """Garante a presença do arquivo ONNX do OSNet, realizando download automático se necessário."""
-        if self.model_path.exists():
+        if self.model_path.exists() and self.model_path.stat().st_size > 1_000_000:
             return True
 
         self.model_path.parent.mkdir(parents=True, exist_ok=True)
         logger.info(f"📥 Baixando modelo neural de Re-ID (OSNet x0.25 ONNX) em {self.model_path}...")
 
         import requests
-        for url in [OSNET_ONNX_URL, OSNET_BACKUP_URL]:
+        headers = {"User-Agent": "Cerberus-Vision-Agent/2.0 (Linux; Nobara; Python 3.11)"}
+        for url in OSNET_ONNX_URLS:
             try:
-                response = requests.get(url, stream=True, timeout=30)
+                logger.info(f"Tentando download de {url}...")
+                response = requests.get(url, stream=True, timeout=60, headers=headers, allow_redirects=True)
                 if response.status_code == 200:
                     with open(self.model_path, "wb") as f:
                         for chunk in response.iter_content(chunk_size=65536):
                             if chunk:
                                 f.write(chunk)
-                    logger.info("✅ Download do OSNet x0.25 concluído com sucesso!")
-                    return True
+                    
+                    file_size = self.model_path.stat().st_size
+                    if file_size > 1_000_000:
+                        logger.info(f"✅ Download do OSNet x0.25 concluído com sucesso ({file_size / 1024 / 1024:.2f} MB)!")
+                        return True
+                    else:
+                        logger.warning(f"Arquivo baixado tem tamanho insuficiente ({file_size} bytes). Descartando...")
+                        self.model_path.unlink(missing_ok=True)
+                else:
+                    logger.warning(f"HTTP {response.status_code} ao baixar de {url}")
             except Exception as e:
                 logger.warning(f"Falha ao baixar OSNet de {url}: {e}")
 
