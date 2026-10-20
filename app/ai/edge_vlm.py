@@ -52,36 +52,32 @@ class EdgeVLM:
 
             torch_dtype = torch.float16 if "cuda" in self.device else torch.float32
 
-            # Tenta carregar com a revisão pinada; se falhar, tenta sem revisão
+            model_kwargs = {
+                "trust_remote_code": True,
+                "torch_dtype": torch_dtype
+            }
+            tokenizer_kwargs = {"trust_remote_code": True}
+
+            if self.revision and self.revision.strip():
+                model_kwargs["revision"] = self.revision.strip()
+                tokenizer_kwargs["revision"] = self.revision.strip()
+
             try:
-                self.tokenizer = AutoTokenizer.from_pretrained(
-                    self.model_id,
-                    revision=self.revision,
-                    trust_remote_code=True
-                )
-                self.model = AutoModelForCausalLM.from_pretrained(
-                    self.model_id,
-                    revision=self.revision,
-                    trust_remote_code=True,
-                    torch_dtype=torch_dtype,
-                    device_map={"": self.device} if "cuda" in self.device else None
-                )
-            except Exception as rev_err:
-                logger.warning(f"Revisão pinada '{self.revision}' indisponível ({rev_err}). Tentando versão principal...")
-                self.tokenizer = AutoTokenizer.from_pretrained(
-                    self.model_id,
-                    trust_remote_code=True
-                )
-                self.model = AutoModelForCausalLM.from_pretrained(
-                    self.model_id,
-                    trust_remote_code=True,
-                    torch_dtype=torch_dtype,
-                    device_map={"": self.device} if "cuda" in self.device else None
-                )
+                self.tokenizer = AutoTokenizer.from_pretrained(self.model_id, **tokenizer_kwargs)
+                self.model = AutoModelForCausalLM.from_pretrained(self.model_id, **model_kwargs)
+            except Exception as load_err:
+                # Se a revisão falhar, tenta carregar sem revisão
+                if "revision" in model_kwargs:
+                    logger.warning(f"Revisão '{self.revision}' falhou ({load_err}). Carregando branch principal...")
+                    model_kwargs.pop("revision", None)
+                    tokenizer_kwargs.pop("revision", None)
+                    self.tokenizer = AutoTokenizer.from_pretrained(self.model_id, **tokenizer_kwargs)
+                    self.model = AutoModelForCausalLM.from_pretrained(self.model_id, **model_kwargs)
+                else:
+                    raise load_err
 
-            if "cuda" not in self.device and hasattr(self.model, "to"):
-                self.model.to(self.device)
-
+            # Aloca diretamente no hardware sem exigir a biblioteca 'accelerate'
+            self.model.to(self.device)
             self.model.eval()
             self.is_ready = True
             self._initializing = False

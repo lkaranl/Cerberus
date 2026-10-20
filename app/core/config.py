@@ -82,7 +82,7 @@ class Settings(BaseSettings):
     # Módulo Edge VLM Local (Moondream2 - Visão Computacional Generativa 100% Offline na GPU)
     enable_edge_vlm: bool = Field(default=True, alias="ENABLE_EDGE_VLM")
     edge_vlm_model: str = Field(default="vikhyatk/moondream2", alias="EDGE_VLM_MODEL")
-    edge_vlm_revision: str = Field(default="2025-01-09", alias="EDGE_VLM_REVISION")
+    edge_vlm_revision: str = Field(default="", alias="EDGE_VLM_REVISION")
 
     def resolve_device(self) -> str:
         """

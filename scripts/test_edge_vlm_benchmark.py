@@ -35,7 +35,7 @@ def main():
 
     # 1. Carregamento do Moondream2 na GPU
     print("\n[1/3] Inicializando Edge VLM (Moondream2 em FP16)...")
-    print(f"  -> Modelo: {edge_vlm.model_id} (Revisão: {edge_vlm.revision})")
+    print(f"  -> Modelo: {edge_vlm.model_id} (Revisão: {edge_vlm.revision or 'padrão/main'})")
     
     t0 = time.time()
     ok = edge_vlm.initialize()
