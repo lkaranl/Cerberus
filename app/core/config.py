@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     cuda_visible_devices: Optional[str] = Field(default="0", alias="CUDA_VISIBLE_DEVICES")
 
     # Arquivos e Diretórios
-    model_path: str = Field(default="models/yolov8n.pt", alias="MODEL_PATH")
+    model_path: str = Field(default="models/yolo11n.pt", alias="MODEL_PATH")
     config_path: str = Field(default="config/cameras.json", alias="CONFIG_PATH")
     data_dir: str = Field(default="data", alias="DATA_DIR")
     events_dir: str = Field(default="data/events", alias="EVENTS_DIR")
@@ -48,7 +48,7 @@ class Settings(BaseSettings):
 
     # Aceleração Máxima TensorRT (NVIDIA CUDA)
     use_tensorrt: bool = Field(default=True, alias="USE_TENSORRT")
-    engine_path: str = Field(default="models/yolov8n.engine", alias="ENGINE_PATH")
+    engine_path: str = Field(default="models/yolo11n.engine", alias="ENGINE_PATH")
     facenet_engine_path: str = Field(default="models/facenet.engine", alias="FACENET_ENGINE_PATH")
 
     # Decodificação de Vídeo em Hardware na GPU (NVIDIA NVDEC)

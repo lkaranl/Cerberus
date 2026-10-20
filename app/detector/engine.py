@@ -48,27 +48,33 @@ class YOLODetectorEngine:
         Path(self.model_path).parent.mkdir(parents=True, exist_ok=True)
 
         # 1. Tenta carregar a engine compilada do TensorRT (FP16 nativo)
-        if self.is_cuda and settings.use_tensorrt and Path(self.engine_path).exists():
+        target_engine = Path(self.engine_path)
+        # Se yolo11n.engine ainda não foi gerado, aceita yolov8n.engine como transição temporária
+        if not target_engine.exists() and Path("models/yolov8n.engine").exists():
+            target_engine = Path("models/yolov8n.engine")
+
+        if self.is_cuda and settings.use_tensorrt and target_engine.exists():
             try:
-                logger.info(f"⚡ Inicializando YOLO com aceleração máxima TensorRT FP16 [{self.engine_path}]...")
-                self.model = YOLO(self.engine_path, task="detect")
+                logger.info(f"⚡ Inicializando YOLO com aceleração máxima TensorRT FP16 [{target_engine}]...")
+                self.model = YOLO(str(target_engine), task="detect")
                 self.using_tensorrt = True
-                logger.info("🚀 Engine TensorRT carregada com sucesso na GPU NVIDIA GTX 1660.")
+                logger.info(f"🚀 Engine TensorRT ({target_engine.name}) carregada com sucesso na GPU NVIDIA GTX 1660.")
             except Exception as trt_err:
                 logger.warning(f"Falha ao carregar TensorRT ({trt_err}). Revertendo para PyTorch CUDA.")
                 self.using_tensorrt = False
 
         # 2. Fallback para modelo PyTorch (.pt) padrão
         if self.model is None:
-            logger.info(f"🚀 Inicializando YOLO PyTorch [{self.model_path}] no dispositivo: {self.device}...")
-            self.model = YOLO(self.model_path)
+            pt_target = self.model_path if Path(self.model_path).exists() else "yolo11n.pt"
+            logger.info(f"🚀 Inicializando YOLO PyTorch [{pt_target}] no dispositivo: {self.device}...")
+            self.model = YOLO(pt_target)
             self.using_tensorrt = False
             logger.info("Modelo YOLO PyTorch carregado com sucesso.")
 
             if self.is_cuda and settings.use_tensorrt and not Path(self.engine_path).exists():
                 logger.info(
-                    "💡 Dica de Desempenho: Para ativar aceleração máxima TensorRT (~3ms na GTX 1660), "
-                    "execute no servidor: python scripts/export_tensorrt.py"
+                    "💡 Dica de Desempenho: Para ativar aceleração máxima TensorRT no YOLO11 (~3ms na GTX 1660), "
+                    "execute no servidor: python3 scripts/export_yolo11_tensorrt.py"
                 )
 
         # Inicializa o FaceNet para reconhecimento facial em GPU
