@@ -133,13 +133,52 @@ Gere o arquivo `.env` a partir do modelo padrão:
 cp .env.example .env
 ```
 
-### 6. Iniciar a Aplicação
-Com o ambiente virtual ativo:
+---
+
+## 🚀 Execução Autônoma 24/7 (Serviço systemd)
+
+Para que o Cerberus continue rodando ininterruptamente em segundo plano mesmo após fechar a sessão SSH ou reiniciar o servidor, utilize o instalador automático:
+
+```bash
+./setup_service.sh
+```
+
+### O que o script faz automaticamente:
+1. Detecta o diretório do projeto, o usuário atual e o Python do ambiente virtual (`.venv`).
+2. Gera e instala o arquivo de serviço `/etc/systemd/system/cerberus.service`.
+3. Recarrega as configurações do `systemd` e habilita o serviço para iniciar no boot do Linux.
+4. Inicia o serviço e verifica a integridade de execução.
+5. Identifica o **IP real da sua rede local** e exibe as URLs prontas para acesso.
+
+### Comandos Úteis de Gerenciamento do Serviço:
+```bash
+# Ver status em tempo real
+systemctl status cerberus
+
+# Acompanhar logs ao vivo com rolagem automática
+journalctl -u cerberus -f
+
+# Reiniciar o serviço (após alterar configurações ou atualizar código)
+sudo systemctl restart cerberus
+
+# Parar o serviço temporariamente
+sudo systemctl stop cerberus
+```
+
+---
+
+## 🛠️ Execução Manual (Modo Desenvolvimento / Debug)
+
+Caso prefira rodar no terminal com o ambiente virtual ativado:
 ```bash
 python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8095
 ```
 
-### 7. Acessar o Painel Web
-Abra o navegador no endereço:
-- No próprio servidor: `http://localhost:8095`
-- A partir de outro computador na rede local: `http://<ip-do-servidor>:8095`
+---
+
+## 🌐 Acesso ao Painel Web
+
+Abra o navegador no endereço retornado pelo script (ou substitua pelo IP da sua máquina na rede):
+- **Painel de Monitoramento ao Vivo**: `http://<ip-do-servidor>:8095`
+- **Dashboard Estatístico e Analítico**: `http://<ip-do-servidor>:8095/dashboard`
+- **No próprio servidor**: `http://localhost:8095`
