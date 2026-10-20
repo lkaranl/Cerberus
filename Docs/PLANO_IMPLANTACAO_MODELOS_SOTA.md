@@ -121,7 +121,7 @@ graph TD
 | Passo | Modelo / Tecnologia | Status | Impacto Imediato |
 | :---: | :--- | :---: | :--- |
 | **Passo 1** | **PP-OCRv4 (LPR Neural)** | ✅ **Concluído & Validado** | Leitura rápida e confiável de placas no portão e garagem |
-| **Passo 2** | **OSNet (Deep Re-ID)** | ⏳ **Próximo** | Rastreamento de moradores mesmo de costas/capuz |
+| **Passo 2** | **OSNet (Deep Re-ID)** | 🔄 **Em Validação** | Rastreamento de moradores mesmo de costas/capuz |
 | **Passo 3** | **YOLO11 (TensorRT FP16)** | 📋 Planejado | Menos falsos positivos e maior acurácia em oclusões |
 | **Passo 4** | **MobileCLIP / SigLIP** | 📋 Planejado | Busca no histórico por texto livre no Telegram |
 | **Passo 5** | **Edge VLM (Moondream2)** | 📋 Planejado | Análise visual avançada 100% offline na GPU |

@@ -13,6 +13,7 @@ from app.storage.database import db
 from app.detector.recognizer import face_recognizer
 from app.detector.visual_matcher import visual_matcher
 from app.detector.plate_reader import plate_reader
+from app.detector.person_reid import person_reid
 
 def _save_evidence_disk(crop_path: str, crop_img: np.ndarray, full_path: str, annotated_frame: np.ndarray, web_path: str) -> None:
     """Grava as imagens de evidência em disco em thread separada sem bloquear a inferência."""
@@ -488,6 +489,22 @@ class CameraTrackerManager:
                         logger.info(f"👤 Rosto identificado em {self.camera_name}: {name} ({int(face_conf * 100)}%)")
                         if had_alerted_unknown and track.active_event_id:
                             track.needs_face_upgrade = True
+
+                        # [FASE 2 SOTA] Registra/atualiza a assinatura biométrica corporal no pool de Re-ID
+                        person_reid.register_resident_sighting(name, crop_obj, self.camera_name)
+
+                    elif not track.is_known:
+                        # [FASE 2 SOTA] Se o rosto não estiver visível (de costas, de capuz, boné ou distante),
+                        # consulta o pool biométrico corporal OSNet para identificar o morador
+                        reid_name, reid_sim = person_reid.match_resident(crop_obj)
+                        if reid_name:
+                            had_alerted_unknown = track.event_triggered and "Desconhecido" in track.identity_name
+                            track.identity_name = reid_name
+                            track.is_known = True
+                            track.match_confidence = reid_sim
+                            logger.info(f"👤 [OSNet Re-ID] Morador identificado pelo corpo em {self.camera_name}: {reid_name} ({int(reid_sim * 100)}%)")
+                            if had_alerted_unknown:
+                                track.needs_identity_upgrade = True
 
                 elif entity_type == "vehicle":
                     plate = plate_reader.read_plate(crop_obj)

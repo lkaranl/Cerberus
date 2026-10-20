@@ -77,6 +77,10 @@ class YOLODetectorEngine:
         # Inicializa o extrator de características para Veículos e Pets
         visual_matcher.initialize()
 
+        # Inicializa o extrator biométrico corporal OSNet (Person Re-ID SOTA)
+        from app.detector.person_reid import person_reid
+        person_reid.initialize()
+
     def detect(
         self,
         frame: np.ndarray,
