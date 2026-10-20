@@ -63,11 +63,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     connectEventsWebSocket();
 
-    // Atualiza status e estatísticas a cada 8 segundos
+    // Atualiza status e estatísticas a cada 4 segundos
     state.statsInterval = setInterval(() => {
       loadSystemStats();
       refreshCameraTelemetry();
-    }, 8000);
+    }, 4000);
   }
 
   // --- Carregar Estatísticas do Sistema ---
@@ -372,9 +372,23 @@ document.addEventListener("DOMContentLoaded", () => {
 
       cams.forEach(cam => {
         const statusEl = document.getElementById(`status-pill-${cam.id}`);
-        if (statusEl && !cam.connected) {
-          statusEl.className = "cam-status-pill offline";
-          statusEl.innerHTML = `<span class="chip-dot"></span> OFFLINE`;
+        const fpsEl = document.getElementById(`fps-pill-${cam.id}`);
+        if (statusEl) {
+          if (cam.connected) {
+            if (!statusEl.classList.contains("online")) {
+              statusEl.className = "cam-status-pill online";
+              statusEl.innerHTML = `<span class="chip-dot glow-green"></span> ONLINE`;
+            }
+            // Se a câmera está conectada no servidor mas o websocket local caiu, restabelece
+            const ws = state.wsConnections[cam.id];
+            if (!document.hidden && (!ws || ws.readyState === WebSocket.CLOSED)) {
+              connectCameraStream(cam.id);
+            }
+          } else {
+            statusEl.className = "cam-status-pill offline";
+            statusEl.innerHTML = `<span class="chip-dot"></span> OFFLINE`;
+            if (fpsEl) fpsEl.textContent = "0.0 FPS";
+          }
         }
       });
     } catch (e) {}

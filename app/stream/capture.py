@@ -1,6 +1,7 @@
 import os
 import time
 import queue
+import select
 import shutil
 import subprocess
 import threading
@@ -11,8 +12,8 @@ import numpy as np
 from app.core.config import settings
 from app.core.logging import logger
 
-# Força transporte TCP para todos os streams RTSP no OpenCV/FFmpeg
-os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
+# Força transporte TCP e timeout de 5s para conexões RTSP no OpenCV/FFmpeg
+os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|stimeout;5000000"
 
 
 class RTSPCapture:
@@ -101,6 +102,41 @@ class RTSPCapture:
         RTSPCapture._RESOLUTION_CACHE[self.rtsp_url] = default_res
         return default_res
 
+    @staticmethod
+    def _read_exact_bytes(proc: subprocess.Popen, n_bytes: int, timeout_sec: float = 3.0) -> Optional[bytes]:
+        """Lê exatamente n_bytes do stdout do subprocesso com timeout estrito sem travar a thread."""
+        if proc is None or proc.stdout is None:
+            return None
+
+        fd = proc.stdout.fileno()
+        buf = bytearray()
+        deadline = time.time() + timeout_sec
+
+        while len(buf) < n_bytes:
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                return None
+
+            try:
+                rlist, _, _ = select.select([fd], [], [], min(remaining, 0.5))
+            except Exception:
+                return None
+
+            if not rlist:
+                if proc.poll() is not None:
+                    return None
+                continue
+
+            try:
+                chunk = os.read(fd, n_bytes - len(buf))
+                if not chunk:
+                    return None
+                buf.extend(chunk)
+            except Exception:
+                return None
+
+        return bytes(buf)
+
     def _open_stream(self) -> bool:
         """Abre a conexão RTSP priorizando NVIDIA NVDEC com fallback para OpenCV."""
         self._release_resources()
@@ -125,10 +161,11 @@ class RTSPCapture:
                     "-nostdin",
                     "-loglevel", "error",
                     "-rtsp_transport", "tcp",
+                    "-stimeout", "5000000",
                     "-flags", "low_delay",
                     "-fflags", "nobuffer",
-                    "-analyzeduration", "500000",
-                    "-probesize", "500000",
+                    "-analyzeduration", "1000000",
+                    "-probesize", "1000000",
                     "-hwaccel", "cuda",
                     "-hwaccel_device", str(settings.nvdec_device),
                     "-i", self.rtsp_url,
@@ -144,9 +181,9 @@ class RTSPCapture:
                     bufsize=self._frame_bytes * 2
                 )
 
-                # Verifica se o primeiro frame é lido com sucesso no timeout
-                raw = self._proc.stdout.read(self._frame_bytes)
-                if len(raw) == self._frame_bytes:
+                # Verifica se o primeiro frame é lido com sucesso sem congelar
+                raw = self._read_exact_bytes(self._proc, self._frame_bytes, timeout_sec=4.0)
+                if raw is not None and len(raw) == self._frame_bytes:
                     frame = np.frombuffer(raw, dtype=np.uint8).reshape((res_h, res_w, 3))
                     self._update_queue(frame)
                     self.is_connected = True
@@ -190,8 +227,13 @@ class RTSPCapture:
     def _release_resources(self) -> None:
         if self._proc is not None:
             try:
+                if self._proc.stdout is not None:
+                    try:
+                        self._proc.stdout.close()
+                    except Exception:
+                        pass
                 self._proc.kill()
-                self._proc.wait(timeout=1)
+                self._proc.wait(timeout=1.0)
             except Exception:
                 pass
             self._proc = None
@@ -227,28 +269,34 @@ class RTSPCapture:
 
     def _capture_loop(self) -> None:
         """Loop contínuo de captura e auto-reconexão com suporte a NVDEC e OpenCV."""
+        consecutive_failures = 0
+
         while self._running:
             if not self.is_connected:
+                # Backoff adaptativo se a câmera estiver instável ou recusando conexões (2s a 6s)
+                if consecutive_failures > 0:
+                    delay = min(6.0, self.reconnect_delay + (consecutive_failures * 1.0))
+                    time.sleep(delay)
+
                 if not self._open_stream():
-                    time.sleep(self.reconnect_delay)
+                    consecutive_failures += 1
                     continue
+                else:
+                    consecutive_failures = 0
 
             now = time.time()
             grabbed = False
 
-            # Caminho 1: Leitura via FFmpeg NVDEC Hardware
-            if self.is_nvdec_active and self._proc is not None and self._proc.stdout is not None:
-                try:
-                    raw = self._proc.stdout.read(self._frame_bytes)
-                    if len(raw) == self._frame_bytes:
-                        frame = np.frombuffer(raw, dtype=np.uint8).reshape((self.resolution[1], self.resolution[0], 3))
-                        self.last_frame_time = now
-                        self._update_fps()
-                        self._update_queue(frame)
-                        grabbed = True
-                    else:
-                        grabbed = False
-                except Exception:
+            # Caminho 1: Leitura via FFmpeg NVDEC Hardware com proteção contra bloqueio
+            if self.is_nvdec_active and self._proc is not None:
+                raw = self._read_exact_bytes(self._proc, self._frame_bytes, timeout_sec=self.read_timeout)
+                if raw is not None and len(raw) == self._frame_bytes:
+                    frame = np.frombuffer(raw, dtype=np.uint8).reshape((self.resolution[1], self.resolution[0], 3))
+                    self.last_frame_time = now
+                    self._update_fps()
+                    self._update_queue(frame)
+                    grabbed = True
+                else:
                     grabbed = False
 
             # Caminho 2: Leitura via OpenCV Fallback
@@ -270,7 +318,7 @@ class RTSPCapture:
                 )
                 self.is_connected = False
                 self._release_resources()
-                time.sleep(self.reconnect_delay)
+                consecutive_failures += 1
 
     def get_latest_frame(self) -> Optional[np.ndarray]:
         """Retorna o frame mais recente capturado ou None se indisponível."""
