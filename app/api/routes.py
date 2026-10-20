@@ -134,8 +134,13 @@ async def get_system_stats():
             mem_res = round(torch.cuda.memory_reserved(0) / 1024**2, 2)
             total_mem = round(torch.cuda.get_device_properties(0).total_memory / 1024**2, 2)
 
+            from app.stream.manager import stream_manager
+            any_nvdec = any(getattr(cap, "is_nvdec_active", False) for cap in stream_manager.captures.values())
+
             trt_active = detector_engine.using_tensorrt or face_recognizer.using_tensorrt
-            if detector_engine.using_tensorrt and face_recognizer.using_tensorrt:
+            if detector_engine.using_tensorrt and face_recognizer.using_tensorrt and any_nvdec:
+                backend_label = "NVIDIA CUDA (Full GPU: NVDEC + YOLO + FaceNet TRT ⚡)"
+            elif detector_engine.using_tensorrt and face_recognizer.using_tensorrt:
                 backend_label = "NVIDIA CUDA (YOLO + FaceNet TensorRT FP16 ⚡)"
             elif detector_engine.using_tensorrt:
                 backend_label = "NVIDIA CUDA (YOLO TensorRT FP16 ⚡)"
@@ -149,6 +154,7 @@ async def get_system_stats():
                 "tensorrt_active": trt_active,
                 "yolo_tensorrt": detector_engine.using_tensorrt,
                 "facenet_tensorrt": face_recognizer.using_tensorrt,
+                "nvdec_active": any_nvdec,
                 "model_format": "TensorRT .engine" if detector_engine.using_tensorrt else "PyTorch .pt",
                 "allocated_mb": mem_alloc,
                 "reserved_mb": mem_res,

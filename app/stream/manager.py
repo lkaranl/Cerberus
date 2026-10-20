@@ -30,9 +30,8 @@ class StreamManager:
 
         # Clientes WebSocket conectados para receber eventos em tempo real
         self._event_listeners: Set[asyncio.Queue] = set()
-
         self._running = False
-        self._process_task: Optional[asyncio.Task] = None
+        self._camera_tasks: Dict[str, asyncio.Task] = {}
 
     def load_cameras_config(self) -> List[CameraConfig]:
         """Carrega lista de câmeras do arquivo JSON ou usa fallback padrão."""
@@ -75,7 +74,6 @@ class StreamManager:
                     priority=False
                 )
             ]
-
         self.cameras_config = cameras
         return cameras
 
@@ -101,14 +99,14 @@ class StreamManager:
         self._event_listeners.discard(q)
 
     def start(self) -> None:
-        """Inicializa captura e processamento assíncrono."""
+        """Inicializa captura e processamento assíncrono paralelo por câmera."""
         if self._running:
             return
 
         self._running = True
         self.load_cameras_config()
 
-        # Inicia captura para câmeras ativas
+        # Inicia captura e loop dedicado para cada câmera ativa
         for cam in self.cameras_config:
             if cam.active:
                 capture = RTSPCapture(cam.id, cam.name, cam.url)
@@ -123,15 +121,21 @@ class StreamManager:
                 self.trackers[cam.id] = tracker
                 self.inference_fps[cam.id] = 0.0
 
-        # Dispara loop de inferência como tarefa assíncrona
-        self._process_task = asyncio.create_task(self._inference_loop())
-        logger.info("StreamManager e pipeline de inferência iniciados.")
+                # Cada câmera roda seu próprio loop independente, eliminando engavetamento
+                task = asyncio.create_task(
+                    self._camera_inference_loop(cam),
+                    name=f"infer-{cam.id}"
+                )
+                self._camera_tasks[cam.id] = task
+
+        logger.info(f"StreamManager iniciado com {len(self._camera_tasks)} pipelines paralelos independentes.")
 
     def stop(self) -> None:
         """Para todas as capturas e encerra o pipeline."""
         self._running = False
-        if self._process_task:
-            self._process_task.cancel()
+        for task in self._camera_tasks.values():
+            task.cancel()
+        self._camera_tasks.clear()
 
         for capture in self.captures.values():
             capture.stop()
@@ -140,31 +144,28 @@ class StreamManager:
         self.trackers.clear()
         logger.info("StreamManager finalizado.")
 
-    async def _inference_loop(self) -> None:
+    async def _camera_inference_loop(self, cam: CameraConfig) -> None:
         """
-        Loop assíncrono que lê frames das câmeras, submete à inferência YOLO,
-        atualiza rastreadores e codifica frames para entrega via WebSocket.
+        Worker assíncrono dedicado exclusivo para uma câmera específica.
+        Garante que a Câmera do Portão processe a 18-30 FPS sem esperar
+        por nenhuma outra câmera do sistema.
         """
-        # Contadores de FPS de inferência por câmera
-        fps_counters: Dict[str, int] = {cam.id: 0 for cam in self.cameras_config}
-        fps_timers: Dict[str, float] = {cam.id: time.time() for cam in self.cameras_config}
+        capture = self.captures.get(cam.id)
+        tracker = self.trackers.get(cam.id)
+        if not capture:
+            return
+
+        fps_counter = 0
+        fps_timer = time.time()
 
         while self._running:
-            had_frame = False
-
-            for cam in self.cameras_config:
-                if not cam.active or cam.id not in self.captures:
-                    continue
-
-                capture = self.captures[cam.id]
+            try:
                 raw_frame = capture.get_latest_frame()
-
                 if raw_frame is None:
+                    await asyncio.sleep(0.005)
                     continue
 
-                had_frame = True
-
-                # Executa detecção YOLO em thread separada
+                # Executa detecção YOLO/TensorRT em thread pool separada
                 detections = await asyncio.to_thread(
                     detector_engine.detect,
                     raw_frame,
@@ -173,20 +174,19 @@ class StreamManager:
                 )
 
                 # Processa rastreamento, reconhecimento facial e anotação do frame
-                tracker = self.trackers.get(cam.id)
                 if tracker:
                     annotated_frame, _ = await tracker.process_tracks(raw_frame, detections)
                 else:
                     annotated_frame = detector_engine.draw_annotations(raw_frame, detections)
 
-                # Redimensiona no servidor para resolução leve antes de codificar (alivia CPU/RAM do cliente fraco)
+                # Redimensiona no servidor com interpolação rápida (INTER_LINEAR)
                 h_ann, w_ann = annotated_frame.shape[:2]
                 if settings.stream_max_width > 0 and w_ann > settings.stream_max_width:
                     scale = settings.stream_max_width / w_ann
                     stream_frame = cv2.resize(
                         annotated_frame,
                         (settings.stream_max_width, int(h_ann * scale)),
-                        interpolation=cv2.INTER_AREA
+                        interpolation=cv2.INTER_LINEAR
                     )
                 else:
                     stream_frame = annotated_frame
@@ -195,19 +195,18 @@ class StreamManager:
                 encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), settings.stream_quality]
                 success, buffer = cv2.imencode(".jpg", stream_frame, encode_param)
                 if success:
-                    jpeg_bytes = buffer.tobytes()
-                    self.latest_annotated_jpeg[cam.id] = jpeg_bytes
+                    self.latest_annotated_jpeg[cam.id] = buffer.tobytes()
 
                 # Atualiza métricas de FPS de inferência
-                fps_counters[cam.id] += 1
+                fps_counter += 1
                 now = time.time()
-                elapsed = now - fps_timers[cam.id]
+                elapsed = now - fps_timer
                 if elapsed >= 1.0:
-                    self.inference_fps[cam.id] = round(fps_counters[cam.id] / elapsed, 1)
-                    fps_counters[cam.id] = 0
-                    fps_timers[cam.id] = now
+                    self.inference_fps[cam.id] = round(fps_counter / elapsed, 1)
+                    fps_counter = 0
+                    fps_timer = now
 
-                # Atualiza telemetria da câmera
+                # Telemetria em tempo real
                 self.latest_telemetry[cam.id] = {
                     "camera_id": cam.id,
                     "camera_name": cam.name,
@@ -216,14 +215,18 @@ class StreamManager:
                     "inference_fps": self.inference_fps.get(cam.id, 0.0),
                     "resolution": capture.resolution,
                     "detections_count": len(detections),
+                    "nvdec_active": getattr(capture, "is_nvdec_active", False),
                     "timestamp": now
                 }
 
-            # Pequeno intervalo para ceder controle ao event loop caso não haja frames
-            if not had_frame:
-                await asyncio.sleep(0.01)
-            else:
-                await asyncio.sleep(0.002)
+                # Cede micro-fatia de tempo ao event loop
+                await asyncio.sleep(0.001)
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Erro no pipeline da câmera {cam.name}: {e}")
+                await asyncio.sleep(0.1)
 
     def get_camera_statuses(self) -> List[Dict[str, Any]]:
         """Retorna status consolidado de todas as câmeras."""
@@ -245,7 +248,8 @@ class StreamManager:
                 "connected": is_connected,
                 "capture_fps": capture_fps,
                 "inference_fps": inf_fps,
-                "resolution": f"{res[0]}x{res[1]}" if res[0] > 0 else "N/A"
+                "resolution": f"{res[0]}x{res[1]}" if res[0] > 0 else "N/A",
+                "nvdec_active": getattr(capture, "is_nvdec_active", False) if capture else False
             })
         return statuses
 

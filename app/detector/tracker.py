@@ -1,5 +1,6 @@
 import time
 import uuid
+import asyncio
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
@@ -12,6 +13,22 @@ from app.storage.database import db
 from app.detector.recognizer import face_recognizer
 from app.detector.visual_matcher import visual_matcher
 from app.detector.plate_reader import plate_reader
+
+def _save_evidence_disk(crop_path: str, crop_img: np.ndarray, full_path: str, annotated_frame: np.ndarray, web_path: str) -> None:
+    """Grava as imagens de evidência em disco em thread separada sem bloquear a inferência."""
+    try:
+        cv2.imwrite(crop_path, crop_img, [cv2.IMWRITE_JPEG_QUALITY, 90])
+        cv2.imwrite(full_path, annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        h_full, w_full = annotated_frame.shape[:2]
+        if w_full > 1280:
+            scale = 1280.0 / w_full
+            web_frame = cv2.resize(annotated_frame, (1280, int(h_full * scale)), interpolation=cv2.INTER_LINEAR)
+        else:
+            web_frame = annotated_frame
+        cv2.imwrite(web_path, web_frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+    except Exception as err:
+        logger.debug(f"Falha ao salvar evidências em disco: {err}")
+
 
 class TrackedEntity:
     def __init__(self, tracking_id: int, entity_type: str = "person", class_label: str = "Objeto"):
@@ -448,10 +465,13 @@ class CameraTrackerManager:
 
             is_upgrade = getattr(track, "needs_identity_upgrade", False)
 
-            # Critérios estritos para evitar repetições:
-            # 1. Deve ser estável (>= settings.min_consecutive_frames)
-            # 2. Não deve ter disparado ainda neste rastro (a menos que seja upgrade de identidade)
-            if track.consecutive_frames >= settings.min_consecutive_frames and not track.event_triggered:
+            # Critérios para evitar repetições sem perder alvos rápidos:
+            # 1. Pessoas ou Veículos: >= settings.min_consecutive_frames (2 frames)
+            # 2. Pets rápidos (cães/gatos passando em corrida): se confiança >= 0.45, dispara imediatamente
+            is_fast_pet = (track.entity_type == "pet" and det["confidence"] >= 0.45)
+            is_stable = (track.consecutive_frames >= settings.min_consecutive_frames) or is_fast_pet
+
+            if is_stable and not track.event_triggered:
                 track.event_triggered = True
                 track.needs_identity_upgrade = False
                 if track.is_stationary:
@@ -478,28 +498,17 @@ class CameraTrackerManager:
                 tag_clean = track.identity_name.replace(" ", "_").replace("[", "").replace("]", "")
                 crop_filename = f"{date_prefix}_{self.camera_id}_{track.entity_type}_{tag_clean}_id{tid}_crop.jpg"
                 full_filename = f"{date_prefix}_{self.camera_id}_{track.entity_type}_{tag_clean}_id{tid}_full.jpg"
+                web_filename = f"{date_prefix}_{self.camera_id}_{track.entity_type}_{tag_clean}_id{tid}_full_web.jpg"
 
                 crop_path = str(events_dir / crop_filename)
                 full_path = str(events_dir / full_filename)
-
-                # Salva recortes de evidência
-                crop_img = self._extract_crop(raw_frame, track.best_bbox or det["bbox"], margin_pct=0.10)
-                cv2.imwrite(crop_path, crop_img, [cv2.IMWRITE_JPEG_QUALITY, 90])
-                cv2.imwrite(full_path, annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-
-                # Salva versão web pré-otimizada (max 1280px) para abertura instantânea no painel
-                web_filename = f"{date_prefix}_{self.camera_id}_{track.entity_type}_{tag_clean}_id{tid}_full_web.jpg"
                 web_path = str(events_dir / web_filename)
-                try:
-                    h_full, w_full = annotated_frame.shape[:2]
-                    if w_full > 1280:
-                        scale = 1280.0 / w_full
-                        web_frame = cv2.resize(annotated_frame, (1280, int(h_full * scale)), interpolation=cv2.INTER_AREA)
-                    else:
-                        web_frame = annotated_frame
-                    cv2.imwrite(web_path, web_frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
-                except Exception as resize_err:
-                    logger.debug(f"Falha ao gerar preview web: {resize_err}")
+
+                # Salva recortes de evidência em background assíncrono (zero impacto no frame loop)
+                crop_img = self._extract_crop(raw_frame, track.best_bbox or det["bbox"], margin_pct=0.10)
+                asyncio.create_task(
+                    asyncio.to_thread(_save_evidence_disk, crop_path, crop_img, full_path, annotated_frame.copy(), web_path)
+                )
 
                 event_record = {
                     "event_id": event_id,

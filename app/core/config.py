@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     engine_path: str = Field(default="models/yolov8n.engine", alias="ENGINE_PATH")
     facenet_engine_path: str = Field(default="models/facenet.engine", alias="FACENET_ENGINE_PATH")
 
+    # Decodificação de Vídeo em Hardware na GPU (NVIDIA NVDEC)
+    use_nvdec: bool = Field(default=True, alias="USE_NVDEC")
+    nvdec_device: int = Field(default=0, alias="NVDEC_DEVICE")
+
     # Otimização para Clientes Fracos / Leves (Server-Side Downscaling do Stream)
     stream_max_width: int = Field(default=960, alias="STREAM_MAX_WIDTH")
     stream_quality: int = Field(default=75, alias="STREAM_QUALITY")

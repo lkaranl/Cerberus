@@ -36,10 +36,11 @@ class FaceRecognizer:
             self.torch = torch
 
             logger.info(f"Carregando FaceNet (InceptionResnetV1) no dispositivo: {self.device}...")
-            # MTCNN leve para recorte preciso do rosto
+            # MTCNN otimizado para sensibilidade a movimento e rostos angulados
             self.mtcnn = MTCNN(
                 image_size=160,
                 margin=20,
+                thresholds=[0.5, 0.6, 0.6],
                 keep_all=False,
                 select_largest=True,
                 device=self.device
@@ -171,17 +172,17 @@ class FaceRecognizer:
         h, w = frame_bgr.shape[:2]
         x1, y1, x2, y2 = bbox
 
-        # Foca nos primeiros 45% superiores da bounding box (onde fica a cabeça/rosto)
+        # Foca nos primeiros 55% superiores da bounding box (onde fica a cabeça/rosto com folga)
         box_h = y2 - y1
-        head_y2 = min(y2, y1 + int(box_h * 0.45))
+        head_y2 = min(y2, y1 + int(box_h * 0.55))
 
-        # Adiciona pequena margem horizontal
+        # Adiciona margem horizontal e vertical para compensar inclinação ao andar
         box_w = x2 - x1
-        pad_x = int(box_w * 0.1)
+        pad_x = int(box_w * 0.15)
         crop_x1 = max(0, x1 - pad_x)
         crop_x2 = min(w, x2 + pad_x)
-        crop_y1 = max(0, y1 - 10)
-        crop_y2 = min(h, head_y2 + 10)
+        crop_y1 = max(0, y1 - 15)
+        crop_y2 = min(h, head_y2 + 15)
 
         head_crop_bgr = frame_bgr[crop_y1:crop_y2, crop_x1:crop_x2]
         if head_crop_bgr.size == 0:
@@ -190,6 +191,13 @@ class FaceRecognizer:
         try:
             head_crop_rgb = cv2.cvtColor(head_crop_bgr, cv2.COLOR_BGR2RGB)
             face_tensor = self.mtcnn(head_crop_rgb)
+
+            # Se o recorte superior não capturar (ex: pessoa inclinada ao andar), tenta na bbox completa
+            if face_tensor is None:
+                full_crop_bgr = frame_bgr[max(0, y1):min(h, y2), max(0, x1):min(w, x2)]
+                if full_crop_bgr.size > 0:
+                    full_crop_rgb = cv2.cvtColor(full_crop_bgr, cv2.COLOR_BGR2RGB)
+                    face_tensor = self.mtcnn(full_crop_rgb)
 
             if face_tensor is None:
                 # Rosto não suficientemente visível ou de costas
