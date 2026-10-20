@@ -67,21 +67,26 @@ async def run_benchmark():
     crops = list(events_dir.glob("*_crop.jpg"))
     if not crops:
         crops = list(events_dir.glob("*.jpg"))
+    if not crops:
+        crops = list(events_dir.rglob("*.jpg"))
 
     print(f"  Encontradas {len(crops)} imagens de evidência para teste.")
     
     indexed_data = []
     img_latencies = []
 
-    # Testa até 30 recortes para medição precisa de throughput
-    sample_crops = crops[:30] if len(crops) > 30 else crops
-    for img_path in sample_crops:
+    # Testa até 25 recortes para medição precisa de throughput
+    sample_crops = crops[:25] if len(crops) > 25 else crops
+    for idx, img_path in enumerate(sample_crops, 1):
         t_start = time.perf_counter()
         emb = semantic_search.extract_image_embedding(str(img_path))
         lat = (time.perf_counter() - t_start) * 1000
         if emb is not None:
             img_latencies.append(lat)
             indexed_data.append((img_path.name, emb))
+            print(f"  • [{idx}/{len(sample_crops)}] {img_path.name} ({lat:.2f} ms)")
+        else:
+            print(f"  ⚠️ [{idx}/{len(sample_crops)}] Falha ao extrair embedding de {img_path.name}")
 
     if img_latencies:
         avg_img_lat = sum(img_latencies) / len(img_latencies)

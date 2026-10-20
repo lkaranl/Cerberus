@@ -10,7 +10,8 @@ from app.core.config import settings
 from app.core.logging import logger
 from app.storage.database import db
 
-MODEL_NAME = "clip-ViT-B-32-multilingual-v1"
+TEXT_MODEL_NAME = "sentence-transformers/clip-ViT-B-32-multilingual-v1"
+IMAGE_MODEL_NAME = "clip-ViT-B-32"
 
 class SemanticSearchEngine:
     """
@@ -24,15 +25,17 @@ class SemanticSearchEngine:
     - "entregador de moto com capacete"
     - "cachorro correndo perto do portão"
     """
-    def __init__(self, model_name: str = MODEL_NAME):
-        self.model_name = model_name
+    def __init__(self, text_model_name: str = TEXT_MODEL_NAME, img_model_name: str = IMAGE_MODEL_NAME):
+        self.text_model_name = text_model_name
+        self.img_model_name = img_model_name
         self.device = settings.resolve_device()
-        self.model = None
+        self.text_model = None
+        self.img_model = None
         self.is_ready = False
         self._initializing = False
 
     def initialize(self) -> bool:
-        """Carrega o modelo multimodal CLIP multilíngue na GPU."""
+        """Carrega os encoders multimodais de imagem e texto CLIP na GPU."""
         if self.is_ready:
             return True
         if self._initializing:
@@ -41,12 +44,13 @@ class SemanticSearchEngine:
         self._initializing = True
         try:
             from sentence_transformers import SentenceTransformer
-            logger.info(f"⚡ Inicializando Modelo de Busca Semântica Multimodal [{self.model_name}] em {self.device}...")
+            logger.info(f"⚡ Inicializando Encoders de Busca Semântica (CLIP Multilíngue + Visual) em {self.device}...")
             t0 = time.time()
-            self.model = SentenceTransformer(self.model_name, device=self.device)
+            self.text_model = SentenceTransformer(self.text_model_name, device=self.device)
+            self.img_model = SentenceTransformer(self.img_model_name, device=self.device)
             self.is_ready = True
             self._initializing = False
-            logger.info(f"🚀 Busca Semântica (CLIP Multilíngue) pronta em {time.time() - t0:.1f}s na GPU!")
+            logger.info(f"🚀 Busca Semântica Multimodal pronta em {time.time() - t0:.1f}s na GPU!")
             return True
         except ImportError:
             logger.warning("sentence-transformers não instalado. Busca semântica operando em modo fallback textual.")
@@ -66,7 +70,7 @@ class SemanticSearchEngine:
         """
         if not self.is_ready:
             self.initialize()
-        if not self.is_ready or self.model is None or image_input is None:
+        if not self.is_ready or self.img_model is None or image_input is None:
             return None
 
         try:
@@ -84,8 +88,13 @@ class SemanticSearchEngine:
             else:
                 return None
 
-            # Extração via encoder visual do CLIP
-            emb = self.model.encode(pil_img, convert_to_numpy=True, normalize_embeddings=True)
+            # Extração via encoder visual oficial do CLIP (compartilha o mesmo espaço vetorial)
+            emb = self.img_model.encode(
+                pil_img,
+                convert_to_numpy=True,
+                normalize_embeddings=True,
+                show_progress_bar=False
+            )
             return emb.astype(np.float32)
 
         except Exception as e:
@@ -103,11 +112,16 @@ class SemanticSearchEngine:
         """Converte uma pergunta ou descrição em texto (ex: 'homem de casaco azul') em embedding multimodal."""
         if not self.is_ready:
             self.initialize()
-        if not self.is_ready or self.model is None or not query:
+        if not self.is_ready or self.text_model is None or not query:
             return None
 
         try:
-            emb = self.model.encode(query.strip(), convert_to_numpy=True, normalize_embeddings=True)
+            emb = self.text_model.encode(
+                query.strip(),
+                convert_to_numpy=True,
+                normalize_embeddings=True,
+                show_progress_bar=False
+            )
             return emb.astype(np.float32)
         except Exception as e:
             logger.error(f"Erro ao codificar texto de busca: {e}")
