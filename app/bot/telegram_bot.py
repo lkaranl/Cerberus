@@ -99,6 +99,7 @@ class TelegramBot:
             {"command": "snapshot", "description": "Foto instantânea das câmeras ao vivo"},
             {"command": "alertas", "description": "Ver os últimos eventos detectados"},
             {"command": "buscar", "description": "Busca semântica visual (ex: /buscar casaco vermelho)"},
+            {"command": "auditar", "description": "Auditoria visual com IA local na GPU (ex: /auditar ou /auditar capacete?)"},
             {"command": "pergunta", "description": "Pergunte à IA sobre o que aconteceu (ex: /pergunta quem veio hoje?)"},
             {"command": "resumo", "description": "Briefing executivo de segurança do dia"},
             {"command": "ajuda", "description": "Menu de comandos e configurações"}
@@ -367,6 +368,9 @@ class TelegramBot:
                 )
             else:
                 await self._cmd_semantic_search(chat_id, query)
+        elif cmd in ("/auditar", "/vlm", "/olhar", "/inspecionar"):
+            q_vlm = text[len(cmd):].strip()
+            await self._cmd_edge_vlm(chat_id, q_vlm)
         elif cmd in ("/pergunta", "/ia", "/ask"):
             # Pergunta explícita com comando
             question = text[len(cmd):].strip()
@@ -399,12 +403,64 @@ class TelegramBot:
             f"🔹 <b>/snapshot</b> - Captura fotos das câmeras ao vivo agora\n"
             f"🔹 <b>/alertas</b> - Lista os últimos 5 eventos registrados\n"
             f"🔹 <b>/buscar [descrição]</b> - Busca visual por IA (ex: casaco vermelho, moto)\n"
+            f"🔹 <b>/auditar [pergunta]</b> - Raio-X visual com IA Edge VLM local (100% offline)\n"
             f"🔹 <b>/resumo</b> - Briefing executivo do dia elaborado pela IA\n"
             f"🔹 <b>/pergunta [texto]</b> - Pergunte sobre histórico das câmeras\n"
             f"🔹 <b>/ajuda</b> - Exibe esta mensagem de suporte\n\n"
             f"💬 <i>Dica: Você também pode me mandar mensagens de texto diretamente, como se falasse com um porteiro!</i>"
         )
         await self._send_text_message(chat_id, help_text)
+
+    async def _cmd_edge_vlm(self, chat_id: str, question: str = "") -> None:
+        """Executa auditoria visual ou pergunta livre usando o Edge VLM (Moondream2) na GPU local."""
+        from app.storage.database import db
+        from app.ai.edge_vlm import edge_vlm
+
+        events = await db.get_recent_events(limit=1)
+        if not events:
+            await self._send_text_message(chat_id, "⚠️ Nenhum evento com evidência registrado recentemente para auditar.")
+            return
+
+        last_ev = events[0]
+        crop_path = last_ev.get("crop_path") or last_ev.get("full_path")
+        if not crop_path or not Path(crop_path).exists():
+            await self._send_text_message(chat_id, "⚠️ A imagem da evidência mais recente não foi encontrada no disco.")
+            return
+
+        await self._send_text_message(chat_id, "👁️ <i>Executando auditoria visual com IA Edge VLM local (Moondream2)...</i>")
+
+        if question:
+            # Pergunta livre sobre a imagem
+            ans = await asyncio.to_thread(edge_vlm.query, crop_path, question)
+            reply = (
+                f"🧠 <b>AUDITORIA VISUAL LOCAL (Edge VLM):</b>\n\n"
+                f"❓ <b>Pergunta:</b> {question}\n"
+                f"💡 <b>Resposta da IA:</b> <i>{ans or 'Não foi possível responder.'}</i>\n\n"
+                f"📹 <b>Evento:</b> {last_ev.get('camera_name')} ({last_ev.get('person_name', 'Alvo')})\n"
+                f"🆔 <code>{last_ev.get('event_id')}</code>"
+            )
+        else:
+            # Laudo completo de segurança da cena
+            audit = await asyncio.to_thread(edge_vlm.audit_security_scene, crop_path, last_ev.get("entity_type", "person"))
+            desc = audit.get("descricao", "")
+            motivo = audit.get("motivo", "")
+            acao = audit.get("acao", "")
+            risco = audit.get("risco", "baixo").upper()
+            risco_badge = "🔴 RISCO ALTO" if risco == "ALTO" else ("🟡 RISCO MÉDIO" if risco == "MEDIO" else "🟢 RISCO BAIXO")
+
+            reply = (
+                f"🛡️ <b>LAUDO VISUAL LOCAL (Moondream2 Edge VLM):</b>\n\n"
+                f"🔍 <b>Descrição da Cena:</b>\n<i>{desc}</i>\n\n"
+                f"📊 <b>Classificação:</b> <b>{risco_badge}</b>\n"
+                f"📝 <b>Observação:</b> {motivo}\n"
+                f"👉 <b>Recomendação:</b> <b>{acao}</b>\n\n"
+                f"🔒 <i>Processado 100% offline na GPU local (sem nuvem).</i>"
+            )
+
+        if Path(crop_path).exists():
+            await self._send_single_photo(chat_id, Path(crop_path), reply, disable_notification=True)
+        else:
+            await self._send_text_message(chat_id, reply)
 
     async def _cmd_semantic_search(self, chat_id: str, query: str) -> None:
         """Executa busca multimodal em linguagem natural (CLIP) no banco de eventos."""

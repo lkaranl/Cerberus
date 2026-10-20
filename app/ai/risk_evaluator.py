@@ -137,8 +137,23 @@ class RiskEvaluator:
         payload = self._build_event_payload(event)
         api_key = settings.openrouter_api_key.strip()
 
-        # Se não há chave de API cadastrada, usa a heurística local rápida
+        # Se não há chave de API cadastrada, tenta auditoria visual local pelo Edge VLM (Moondream2)
         if not api_key:
+            crop_path = event.get("crop_path") or event.get("full_path")
+            if settings.enable_edge_vlm and crop_path and Path(crop_path).exists():
+                try:
+                    from app.ai.edge_vlm import edge_vlm
+                    if edge_vlm.is_ready or edge_vlm.initialize():
+                        audit = await asyncio.to_thread(
+                            edge_vlm.audit_security_scene,
+                            crop_path,
+                            event.get("entity_type", "person")
+                        )
+                        if audit and audit.get("motivo"):
+                            return audit
+                except Exception as vlm_err:
+                    logger.debug(f"Falha na auditoria visual Edge VLM: {vlm_err}")
+
             res = self._fallback_heuristic(payload)
             res["avaliador"] = "heuristica_local"
             return res
@@ -181,9 +196,24 @@ class RiskEvaluator:
                 else:
                     logger.warning(f"⚠️ OpenRouter retornou HTTP {resp.status_code}: {resp.text[:120]}. Usando fallback.")
         except Exception as err:
-            logger.debug(f"Erro na chamada OpenRouter: {err}. Acionando fallback heurístico.")
+            logger.debug(f"Erro na chamada OpenRouter: {err}. Acionando fallback visual/heurístico.")
 
-        # Fallback de segurança garantido
+        # Fallback de segurança: tenta Edge VLM local antes da heurística cega
+        crop_path = event.get("crop_path") or event.get("full_path")
+        if settings.enable_edge_vlm and crop_path and Path(crop_path).exists():
+            try:
+                from app.ai.edge_vlm import edge_vlm
+                if edge_vlm.is_ready or edge_vlm.initialize():
+                    audit = await asyncio.to_thread(
+                        edge_vlm.audit_security_scene,
+                        crop_path,
+                        event.get("entity_type", "person")
+                    )
+                    if audit and audit.get("motivo"):
+                        return audit
+            except Exception as vlm_err:
+                logger.debug(f"Falha no fallback visual Edge VLM: {vlm_err}")
+
         fallback = self._fallback_heuristic(payload)
         fallback["avaliador"] = "heuristica_local_fallback"
         return fallback

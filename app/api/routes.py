@@ -230,3 +230,68 @@ async def clear_events_database():
     }
 
 
+@router.get("/vlm/status")
+async def get_edge_vlm_status():
+    """Retorna o status do modelo multimodal generativo local (Edge VLM - Moondream2)."""
+    from app.ai.edge_vlm import edge_vlm
+    return {
+        "enabled": settings.enable_edge_vlm,
+        "is_ready": edge_vlm.is_ready,
+        "model_id": edge_vlm.model_id,
+        "revision": edge_vlm.revision,
+        "device": edge_vlm.device
+    }
+
+
+@router.get("/vlm/describe/{event_id}")
+async def describe_event_vlm(event_id: str):
+    """Gera uma descrição visual detalhada da evidência usando o Moondream2 local."""
+    from app.ai.edge_vlm import edge_vlm
+    event = await db.get_event_by_id(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Evento não encontrado")
+
+    crop_path = Path(event["crop_path"])
+    target_img = crop_path if crop_path.exists() else Path(event.get("full_path", ""))
+    if not target_img.exists():
+        raise HTTPException(status_code=404, detail="Imagem de evidência não encontrada no disco")
+
+    import asyncio
+    description = await asyncio.to_thread(edge_vlm.caption, str(target_img), "normal")
+    audit = await asyncio.to_thread(edge_vlm.audit_security_scene, str(target_img), event.get("entity_type", "person"))
+
+    return {
+        "event_id": event_id,
+        "description": description,
+        "audit": audit
+    }
+
+
+@router.post("/vlm/ask")
+async def ask_event_vlm(payload: dict):
+    """Responde a uma pergunta em linguagem natural sobre uma imagem de evento gravado."""
+    from app.ai.edge_vlm import edge_vlm
+    event_id = payload.get("event_id", "")
+    question = payload.get("question", "").strip()
+    if not event_id or not question:
+        raise HTTPException(status_code=400, detail="Parâmetros 'event_id' e 'question' são obrigatórios")
+
+    event = await db.get_event_by_id(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Evento não encontrado")
+
+    crop_path = Path(event["crop_path"])
+    target_img = crop_path if crop_path.exists() else Path(event.get("full_path", ""))
+    if not target_img.exists():
+        raise HTTPException(status_code=404, detail="Imagem de evidência não encontrada no disco")
+
+    import asyncio
+    answer = await asyncio.to_thread(edge_vlm.query, str(target_img), question)
+    return {
+        "event_id": event_id,
+        "question": question,
+        "answer": answer
+    }
+
+
+
