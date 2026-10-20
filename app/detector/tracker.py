@@ -17,7 +17,7 @@ from app.detector.plate_reader import plate_reader
 def _save_evidence_disk(crop_path: str, crop_img: np.ndarray, full_path: str, annotated_frame: np.ndarray, web_path: str) -> None:
     """Grava as imagens de evidência em disco em thread separada sem bloquear a inferência."""
     try:
-        cv2.imwrite(crop_path, crop_img, [cv2.IMWRITE_JPEG_QUALITY, 90])
+        cv2.imwrite(crop_path, crop_img, [cv2.IMWRITE_JPEG_QUALITY, 95])
         cv2.imwrite(full_path, annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
         h_full, w_full = annotated_frame.shape[:2]
         if w_full > 1280:
@@ -276,7 +276,7 @@ class CameraTrackerManager:
 
         return None
 
-    def _extract_crop(self, frame: np.ndarray, bbox: Tuple[int, int, int, int], margin_pct: float = 0.10) -> np.ndarray:
+    def _extract_crop(self, frame: np.ndarray, bbox: Tuple[int, int, int, int], margin_pct: float = 0.12) -> np.ndarray:
         h, w = frame.shape[:2]
         x1, y1, x2, y2 = bbox
 
@@ -294,6 +294,13 @@ class CameraTrackerManager:
         crop = frame[crop_y1:crop_y2, crop_x1:crop_x2]
         if crop.size == 0:
             return frame
+
+        # Garante resolução mínima confortável para visualização no Telegram/Web
+        ch, cw = crop.shape[:2]
+        if ch < 320 or cw < 420:
+            scale = min(3.0, max(320.0 / float(ch), 420.0 / float(cw)))
+            crop = cv2.resize(crop, (int(cw * scale), int(ch * scale)), interpolation=cv2.INTER_LANCZOS4)
+
         return crop
 
     def _extract_person_crop(
@@ -303,45 +310,82 @@ class CameraTrackerManager:
         face_bbox: Optional[Tuple[int, int, int, int]] = None
     ) -> np.ndarray:
         """
-        Recorta com máxima prioridade o ROSTO da pessoa com margem anatômica completa (cabelo, queixo e orelhas).
-        Se a pessoa estiver de costas ou o rosto não estiver visível, recorta a porção superior do corpo como fallback.
+        Recorta a pessoa em enquadramento de RETRATO PROFISSIONAL AMPLO (busto: cabeça, ombros e peito).
+        Aplica super-resolução Lanczos-4 e realce de nitidez para que a imagem enviada ao Telegram
+        tenha no mínimo 460x580px, permitindo ver perfeitamente os traços do rosto e as vestimentas.
         """
         h, w = frame.shape[:2]
+        crop = None
 
         if face_bbox is not None:
             fx1, fy1, fx2, fy2 = face_bbox
             fw = fx2 - fx1
             fh = fy2 - fy1
 
-            if fw > 10 and fh > 10:
-                # Margem confortável para enquadrar cabeça inteira em altíssima definição
-                pad_w = int(fw * 0.38)
-                pad_h_top = int(fh * 0.45)
-                pad_h_bottom = int(fh * 0.35)
+            if fw > 12 and fh > 12:
+                fcx = (fx1 + fx2) / 2.0
 
-                cx1 = max(0, fx1 - pad_w)
-                cy1 = max(0, fy1 - pad_h_top)
-                cx2 = min(w, fx2 + pad_w)
-                cy2 = min(h, fy2 + pad_h_bottom)
+                # Enquadramento de retrato amplo (Head & Shoulders):
+                # - Acima: espaço generoso com todo o cabelo e respiro
+                # - Abaixo: pescoço, clavícula e ombros/peito para identificação completa
+                pad_top = int(fh * 0.85)
+                pad_bottom = int(fh * 2.20)
+
+                cy1 = max(0, fy1 - pad_top)
+                cy2 = min(h, fy2 + pad_bottom)
+                crop_h = cy2 - cy1
+
+                # Proporção elegante de retrato (~3:4)
+                crop_w = int(crop_h * 0.80)
+
+                # Garante que a largura cubra a linha dos ombros da pessoa
+                bx1, by1, bx2, by2 = body_bbox
+                bw = bx2 - bx1
+                crop_w = max(crop_w, int(bw * 0.80))
+
+                cx1 = max(0, int(fcx - (crop_w / 2.0)))
+                cx2 = min(w, int(fcx + (crop_w / 2.0)))
 
                 face_crop = frame[cy1:cy2, cx1:cx2]
-                if face_crop.size > 0 and face_crop.shape[0] > 15 and face_crop.shape[1] > 15:
-                    return face_crop
+                if face_crop.size > 0 and face_crop.shape[0] > 20 and face_crop.shape[1] > 20:
+                    crop = face_crop
 
-        # Fallback (pessoa de costas): recorta os 60% superiores do corpo
-        bx1, by1, bx2, by2 = body_bbox
-        bw = bx2 - bx1
-        bh = by2 - by1
-        pad_x = int(bw * 0.12)
-        top_y2 = min(h, by1 + int(bh * 0.65))
+        if crop is None:
+            # Fallback (pessoa de costas): recorta os 65% superiores do corpo com margem
+            bx1, by1, bx2, by2 = body_bbox
+            bw = bx2 - bx1
+            bh = by2 - by1
+            pad_x = int(bw * 0.15)
+            top_y2 = min(h, by1 + int(bh * 0.65))
 
-        cx1 = max(0, bx1 - pad_x)
-        cy1 = max(0, by1 - 10)
-        cx2 = min(w, bx2 + pad_x)
-        cy2 = top_y2
+            cx1 = max(0, bx1 - pad_x)
+            cy1 = max(0, by1 - 15)
+            cx2 = min(w, bx2 + pad_x)
+            cy2 = top_y2
 
-        crop = frame[cy1:cy2, cx1:cx2]
-        return crop if crop.size > 0 else frame[by1:by2, bx1:bx2]
+            crop = frame[cy1:cy2, cx1:cx2]
+            if crop.size == 0:
+                crop = frame[by1:by2, bx1:bx2]
+
+        # --- Super-Resolução Inteligente (Lanczos-4) & Realce de Nitidez Facial ---
+        # Garante que NENHUMA imagem minúscula ou borrada (ex: 80x90px) seja salva ou enviada.
+        ch, cw = crop.shape[:2]
+        min_target_h = 580
+        min_target_w = 460
+        if ch < min_target_h or cw < min_target_w:
+            scale_factor = max(min_target_h / float(ch), min_target_w / float(cw))
+            # Limita a ampliação para manter a textura natural
+            scale_factor = min(scale_factor, 4.5)
+            new_w = int(cw * scale_factor)
+            new_h = int(ch * scale_factor)
+
+            crop = cv2.resize(crop, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
+
+            # Máscara de nitidez (unsharp masking) para realçar olhos, sobrancelhas e contornos faciais
+            gaussian = cv2.GaussianBlur(crop, (0, 0), 1.6)
+            crop = cv2.addWeighted(crop, 1.25, gaussian, -0.25, 0)
+
+        return crop
 
     async def process_tracks(
         self,
