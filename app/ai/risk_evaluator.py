@@ -188,4 +188,128 @@ class RiskEvaluator:
         fallback["avaliador"] = "heuristica_local_fallback"
         return fallback
 
+    async def answer_security_question(self, question: str, recent_events: list) -> str:
+        """
+        Responde a perguntas em linguagem natural feitas pelo morador no Telegram,
+        analisando os eventos recentes do banco SQLite.
+        """
+        api_key = settings.openrouter_api_key.strip()
+        if not api_key:
+            return (
+                "⚠️ A chave da OpenRouter (OPENROUTER_API_KEY) não está configurada no .env. "
+                "Configure para habilitar o assistente de IA."
+            )
+
+        model = settings.openrouter_model or "google/gemini-2.5-flash"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/karan/cerberus",
+            "X-Title": "Cerberus Security AI"
+        }
+
+        # Formata o resumo compacto dos eventos (~150-200 tokens)
+        events_summary = []
+        for e in recent_events[:30]:
+            ts = e.get("timestamp", "")
+            try:
+                hora = datetime.fromisoformat(ts).strftime("%H:%M")
+            except Exception:
+                hora = ts[:16]
+            cam = e.get("camera_name", "Câmera")
+            name = e.get("person_name", "Desconhecido")
+            etype = e.get("entity_type", "person")
+            plate = e.get("license_plate", "")
+            plate_info = f" [Placa: {plate}]" if plate else ""
+            events_summary.append(f"- {hora} | {cam} | {etype}: {name}{plate_info}")
+
+        events_text = "\n".join(events_summary) if events_summary else "Nenhum evento registrado recentemente."
+
+        prompt_system = (
+            "Você é o assistente inteligente de segurança residencial Cerberus (Sentinela Vision).\n"
+            "O morador fez uma pergunta sobre o que aconteceu nas câmeras.\n"
+            "Responda de forma direta, prestativa e humana em português do Brasil, "
+            "baseando-se ESTRITAMENTE na lista de eventos fornecida.\n"
+            "Se a informação não estiver na lista, informe educadamente que nada foi detectado no período."
+        )
+
+        user_content = (
+            f"Histórico recente de eventos nas câmeras:\n{events_text}\n\n"
+            f"Pergunta do morador: {question}"
+        )
+
+        data = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": prompt_system},
+                {"role": "user", "content": user_content}
+            ],
+            "temperature": 0.2,
+            "max_tokens": 400
+        }
+
+        try:
+            timeout = float(settings.openrouter_timeout or 15.0)
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.post(self.api_url, headers=headers, json=data)
+                if resp.status_code == 200:
+                    resp_json = resp.json()
+                    msg = resp_json.get("choices", [{}])[0].get("message", {})
+                    content = (msg.get("content") or "").strip()
+                    if content:
+                        return content
+                logger.warning(f"⚠️ OpenRouter erro no chat: {resp.status_code} - {resp.text[:120]}")
+        except Exception as err:
+            logger.debug(f"Erro ao consultar assistente de IA: {err}")
+
+        return "Desculpe, ocorreu uma instabilidade temporária na consulta à IA. Tente novamente em instantes."
+
+    async def generate_daily_briefing(self, analytics: dict, recent_events: list) -> str:
+        """Gera um briefing executivo consolidado da segurança residencial."""
+        api_key = settings.openrouter_api_key.strip()
+        if not api_key:
+            return "⚠️ OpenRouter não configurada para gerar o briefing."
+
+        model = settings.openrouter_model or "google/gemini-2.5-flash"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/karan/cerberus",
+            "X-Title": "Cerberus Security AI"
+        }
+
+        prompt_system = (
+            "Você é o auditor de segurança residencial Cerberus.\n"
+            "Gere um Briefing de Segurança diário conciso em tópicos no formato HTML para o Telegram.\n"
+            "Destaque: status geral do perímetro, moradores vistos, veículos e se houve qualquer movimentação anormal na madrugada."
+        )
+
+        user_content = f"Dados analíticos: {json.dumps(analytics, ensure_ascii=False)}\nEventos recentes: {json.dumps(recent_events[:25], ensure_ascii=False)}"
+
+        data = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": prompt_system},
+                {"role": "user", "content": user_content}
+            ],
+            "temperature": 0.2,
+            "max_tokens": 500
+        }
+
+        try:
+            timeout = float(settings.openrouter_timeout or 15.0)
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.post(self.api_url, headers=headers, json=data)
+                if resp.status_code == 200:
+                    resp_json = resp.json()
+                    msg = resp_json.get("choices", [{}])[0].get("message", {})
+                    content = (msg.get("content") or "").strip()
+                    if content:
+                        return content
+        except Exception as err:
+            logger.debug(f"Erro no briefing IA: {err}")
+
+        return "Não foi possível gerar o briefing no momento."
+
 risk_evaluator = RiskEvaluator()
+

@@ -98,6 +98,8 @@ class TelegramBot:
             {"command": "status", "description": "Ver status do sistema e telemetria"},
             {"command": "snapshot", "description": "Foto instantânea das câmeras ao vivo"},
             {"command": "alertas", "description": "Ver os últimos eventos detectados"},
+            {"command": "pergunta", "description": "Pergunte à IA sobre o que aconteceu (ex: /pergunta quem veio hoje?)"},
+            {"command": "resumo", "description": "Briefing executivo de segurança do dia"},
             {"command": "ajuda", "description": "Menu de comandos e configurações"}
         ]
         try:
@@ -348,11 +350,28 @@ class TelegramBot:
             await self._cmd_snapshot(chat_id)
         elif cmd in ("/alertas", "/eventos"):
             await self._cmd_alerts(chat_id)
+        elif cmd in ("/resumo", "/briefing", "/relatorio"):
+            await self._cmd_briefing(chat_id)
+        elif cmd in ("/pergunta", "/ia", "/ask"):
+            # Pergunta explícita com comando
+            question = text[len(cmd):].strip()
+            if not question:
+                await self._send_text_message(
+                    chat_id,
+                    "💡 <b>Como usar:</b> Digite <code>/pergunta</code> seguido da sua dúvida.\n"
+                    "<i>Exemplo: /pergunta O carteiro ou alguém de moto passou hoje de manhã?</i>"
+                )
+            else:
+                await self._cmd_ai_question(chat_id, question)
         else:
-            await self._send_text_message(
-                chat_id,
-                "Comando não reconhecido. Digite <b>/ajuda</b> para ver as opções disponíveis."
-            )
+            # Qualquer texto natural que não seja comando de barra é tratado como pergunta para o Agente de IA!
+            if not text.startswith("/"):
+                await self._cmd_ai_question(chat_id, text)
+            else:
+                await self._send_text_message(
+                    chat_id,
+                    "Comando não reconhecido. Digite <b>/ajuda</b> para ver as opções ou envie sua pergunta diretamente em texto."
+                )
 
     async def _cmd_help(self, chat_id: str, user_name: str) -> None:
         canal = "CANAL DE ALERTAS CRÍTICOS (ALTO RISCO)" if self.is_critical_channel else "FEED GERAL DE AUDITORIA"
@@ -364,9 +383,38 @@ class TelegramBot:
             f"🔹 <b>/status</b> - Telemetria do servidor, GPU e FPS das câmeras\n"
             f"🔹 <b>/snapshot</b> - Captura fotos das câmeras ao vivo agora\n"
             f"🔹 <b>/alertas</b> - Lista os últimos 5 eventos registrados\n"
-            f"🔹 <b>/ajuda</b> - Exibe esta mensagem de suporte\n"
+            f"🔹 <b>/resumo</b> - Briefing executivo do dia elaborado pela IA\n"
+            f"🔹 <b>/pergunta [texto]</b> - Pergunte sobre histórico das câmeras\n"
+            f"🔹 <b>/ajuda</b> - Exibe esta mensagem de suporte\n\n"
+            f"💬 <i>Dica: Você também pode me mandar mensagens de texto diretamente, como se falasse com um porteiro!</i>"
         )
         await self._send_text_message(chat_id, help_text)
+
+    async def _cmd_ai_question(self, chat_id: str, question: str) -> None:
+        """Processa perguntas em linguagem natural usando eventos do SQLite + OpenRouter."""
+        from app.storage.database import db
+        await self._send_text_message(chat_id, "🧠 <i>Consultando histórico e analisando eventos com IA...</i>")
+
+        recent = await db.get_events_for_ai_query(hours=24, limit=35)
+        answer = await risk_evaluator.answer_security_question(question, recent)
+        
+        reply = (
+            f"🤖 <b>RESPOSTA DO CERBERUS:</b>\n\n"
+            f"{answer}\n\n"
+            f"<i>Fonte: Análise dos eventos registrados no banco local.</i>"
+        )
+        await self._send_text_message(chat_id, reply)
+
+    async def _cmd_briefing(self, chat_id: str) -> None:
+        """Gera e exibe um briefing executivo consolidado da segurança."""
+        from app.storage.database import db
+        await self._send_text_message(chat_id, "📋 <i>Elaborando briefing executivo de segurança com IA...</i>")
+
+        analytics = await db.get_analytics_data()
+        recent = await db.get_events_for_ai_query(hours=24, limit=30)
+        briefing = await risk_evaluator.generate_daily_briefing(analytics, recent)
+
+        await self._send_text_message(chat_id, briefing)
 
     async def _cmd_status(self, chat_id: str) -> None:
         from app.stream.manager import stream_manager

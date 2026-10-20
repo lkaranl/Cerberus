@@ -198,6 +198,23 @@ class Database:
 
         return await asyncio.to_thread(_count)
 
+    async def get_events_for_ai_query(self, hours: int = 24, limit: int = 40) -> List[Dict[str, Any]]:
+        """Busca eventos recentes ordenados para alimentar o assistente de IA."""
+        def _query():
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                sql = """
+                    SELECT camera_name, timestamp, entity_type, person_name,
+                           is_known, license_plate, confidence
+                    FROM events
+                    ORDER BY id DESC
+                    LIMIT ?
+                """
+                cursor.execute(sql, (limit,))
+                return [dict(row) for row in cursor.fetchall()]
+
+        return await asyncio.to_thread(_query)
+
     async def get_analytics_data(self) -> Dict[str, Any]:
         """Calcula estatísticas agregadas de presenças, veículos e pets para o Dashboard."""
         def _analytics():
