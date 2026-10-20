@@ -111,43 +111,39 @@ def main():
     }
     print(f"✓ YOLOv8 Média: {avg_yolo:.2f} ms | P95: {p95_yolo:.2f} ms [{model_mode}]")
 
-    # --- Teste 2: MTCNN Face Detection & Alignment ---
-    print("\n⏱️ [2/5] Medindo Detecção e Alinhamento Facial MTCNN...")
-    # Simula crop da cabeça de uma pessoa
-    head_crop = dummy_frame[test_h//4 : test_h//4 + 300, test_w//4 : test_w//4 + 300]
-    head_crop_rgb = cv2.cvtColor(head_crop, cv2.COLOR_BGR2RGB)
+    # --- Teste 2: Detecção Facial & Localização de Bounding Box (MTCNN) ---
+    print("\n⏱️ [2/6] Medindo Detecção e Localização Facial MTCNN (detect_and_identify_person)...")
+    head_bbox = (test_w // 4, test_h // 4, test_w // 2, (test_h // 4) + 500)
 
     times_mtcnn = []
-    if face_recognizer.mtcnn is not None:
-        # Warmup
+    if face_recognizer.is_ready:
         for _ in range(3):
-            _ = face_recognizer.mtcnn(head_crop_rgb)
+            _ = face_recognizer.detect_and_identify_person(dummy_frame, head_bbox)
 
         for _ in range(20):
             t0 = time.perf_counter()
-            _ = face_recognizer.mtcnn(head_crop_rgb)
+            _ = face_recognizer.detect_and_identify_person(dummy_frame, head_bbox)
             times_mtcnn.append((time.perf_counter() - t0) * 1000)
 
-        avg_mtcnn = np.mean(times_mtcnn)
-        p95_mtcnn = np.percentile(times_mtcnn, 95)
+        avg_mtcnn = float(np.mean(times_mtcnn))
+        p95_mtcnn = float(np.percentile(times_mtcnn, 95))
     else:
         avg_mtcnn = 0.0
         p95_mtcnn = 0.0
 
     results["mtcnn"] = {
-        "label": "MTCNN Detecção Facial (PyTorch)",
+        "label": "Detecção & Localização Facial (MTCNN)",
         "avg_ms": avg_mtcnn,
         "p95_ms": p95_mtcnn
     }
     print(f"✓ MTCNN Média: {avg_mtcnn:.2f} ms | P95: {p95_mtcnn:.2f} ms")
 
     # --- Teste 3: FaceNet Feature Extraction ---
-    print("\n⏱️ [3/5] Medindo Extração de Embedding FaceNet (512-dim)...")
+    print("\n⏱️ [3/6] Medindo Extração de Embedding FaceNet (512-dim)...")
     dummy_face_tensor = torch.randn(1, 3, 160, 160, device=device)
 
     times_facenet = []
     if face_recognizer.is_ready:
-        # Warmup
         for _ in range(5):
             _ = face_recognizer._extract_embedding(dummy_face_tensor)
 
@@ -156,8 +152,8 @@ def main():
             _ = face_recognizer._extract_embedding(dummy_face_tensor)
             times_facenet.append((time.perf_counter() - t0) * 1000)
 
-        avg_facenet = np.mean(times_facenet)
-        p95_facenet = np.percentile(times_facenet, 95)
+        avg_facenet = float(np.mean(times_facenet))
+        p95_facenet = float(np.percentile(times_facenet, 95))
         fn_mode = "TensorRT FP16 ⚡" if face_recognizer.using_tensorrt else "PyTorch CUDA"
     else:
         avg_facenet = 0.0
@@ -171,9 +167,30 @@ def main():
     }
     print(f"✓ FaceNet Média: {avg_facenet:.2f} ms | P95: {p95_facenet:.2f} ms [{fn_mode}]")
 
-    # --- Teste 4: Server-Side Resize & JPEG Encoding ---
-    print("\n⏱️ [4/5] Medindo Redimensionamento e Compressão JPEG para Web...")
-    target_width = settings.stream_max_width if settings.stream_max_width > 0 else 960
+    # --- Teste 4: Renderização de Anotações Adaptativas (Deep Slate + Badges) ---
+    print("\n⏱️ [4/6] Medindo Desenho de Anotações Adaptativas em 2K (draw_annotations)...")
+    mock_detections = [
+        {"bbox": (300, 200, 700, 900), "confidence": 0.89, "class_label": "Pessoa", "tracking_id": 1, "is_known": True, "person_name": "Morador"},
+        {"bbox": (1100, 500, 1700, 950), "confidence": 0.94, "class_label": "Carro", "tracking_id": 2, "is_known": False, "is_stationary": True}
+    ]
+
+    times_annotate = []
+    for _ in range(25):
+        t0 = time.perf_counter()
+        _ = detector_engine.draw_annotations(dummy_frame, mock_detections)
+        times_annotate.append((time.perf_counter() - t0) * 1000)
+
+    avg_annotate = float(np.mean(times_annotate))
+    results["annotate"] = {
+        "label": "Renderização de Bounding Boxes 2K",
+        "avg_ms": avg_annotate,
+        "p95_ms": float(np.percentile(times_annotate, 95))
+    }
+    print(f"✓ Anotações 2K Média: {avg_annotate:.2f} ms")
+
+    # --- Teste 5: Server-Side Resize & JPEG Encoding ---
+    print("\n⏱️ [5/6] Medindo Redimensionamento e Compressão JPEG para Web...")
+    target_width = settings.stream_max_width if settings.stream_max_width > 0 else 1440
 
     times_resize = []
     times_jpeg = []
@@ -188,12 +205,12 @@ def main():
         _, _ = cv2.imencode(".jpg", resized, encode_param)
         times_jpeg.append((time.perf_counter() - t1) * 1000)
 
-    avg_resize = np.mean(times_resize)
-    avg_jpeg = np.mean(times_jpeg)
+    avg_resize = float(np.mean(times_resize))
+    avg_jpeg = float(np.mean(times_jpeg))
     results["resize"] = {
-        "label": f"Downscale CPU (2K ➔ {target_width}px)",
+        "label": f"Downscale Servidor (2K ➔ {target_width}px)",
         "avg_ms": avg_resize,
-        "p95_ms": np.percentile(times_resize, 95)
+        "p95_ms": float(np.percentile(times_resize, 95))
     }
     results["jpeg"] = {
         "label": f"Compressão JPEG (qualidade {settings.stream_quality}%)",
@@ -203,8 +220,8 @@ def main():
     print(f"✓ Resize CPU: {avg_resize:.2f} ms")
     print(f"✓ JPEG Encode: {avg_jpeg:.2f} ms")
 
-    # --- Teste 5: Câmeras Reais Conectadas e Latência de Captura ---
-    print("\n⏱️ [5/5] Inspecionando Status das Câmeras RTSP em Execução...")
+    # --- Teste 6: Câmeras Reais Conectadas e Latência de Captura ---
+    print("\n⏱️ [6/6] Inspecionando Status das Câmeras RTSP em Execução...")
     cam_config_file = Path("config/cameras.json")
     if cam_config_file.exists():
         with open(cam_config_file, "r", encoding="utf-8") as f:
@@ -214,7 +231,7 @@ def main():
             print(f"    • {c['name']} ({c['id']}) - Ativa: {c.get('active', True)}")
 
     # --- Relatório Final e Análise de Gargalos ---
-    total_cycle_ms = avg_yolo + avg_resize + avg_jpeg
+    total_cycle_ms = avg_yolo + avg_annotate + avg_resize + avg_jpeg
     # Adiciona FaceNet/MTCNN condicional (quando há pessoas na cena)
     total_with_face_ms = total_cycle_ms + avg_mtcnn + avg_facenet
 

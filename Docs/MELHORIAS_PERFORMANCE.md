@@ -140,3 +140,40 @@ Em navegadores de computadores ou celulares fracos, criar e descartar dezenas de
 | **Média** | **TurboJPEG com Instruções AVX2** | Baixa | Streaming 3x a 5x mais ágil no envio de frames |
 | **Média** | **Decodificação NVDEC por Hardware** | Média/Alta | Libera até 40% da CPU do Intel i5-7600K |
 | **Média** | **Batching TensorRT de Múltiplas Câmeras** | Média/Alta | Permite escalar para mais de 6 câmeras a 30 FPS estáveis |
+
+---
+
+## 🧪 Suíte de Testes de Performance & Reconhecimento
+
+Para auditar o sistema e garantir que o pipeline opera no limite do hardware na GPU NVIDIA GTX 1660, execute os testes abaixo no servidor Linux Nobara:
+
+### 1. 🔍 Raio-X Geral de Performance do Pipeline
+Mede a latência milissegundo a milissegundo de cada etapa (YOLO TensorRT, MTCNN, FaceNet, Renderização 2K, JPEG) e calcula o FPS teórico:
+```bash
+python scripts/profile_pipeline.py
+```
+
+### 2. 👤 Benchmark Avançado de Reconhecimento & Precisão Facial
+Valida a detecção facial no frame 2K, extração do recorte anatômico do rosto, tempo de embeddings FaceNet (TensorRT FP16) e calcula a matriz de similaridade entre fotos de moradores:
+```bash
+python scripts/test_recognition_accuracy.py
+```
+
+### 3. 🎯 Teste de Estresse do Rastreador & Upgrade de Evidência
+Simula 150 frames de vídeo com pessoas de costas virando de frente, carros estacionando e pets em corrida. Valida a velocidade do tracking, supressão de duplicidades e upgrade dinâmico de fotos de alerta:
+```bash
+python scripts/test_tracker_stress.py
+```
+
+### 4. 📹 Teste de Estabilidade e Latência RTSP Simultânea
+Conecta a todas as câmeras ativas em paralelo medindo FPS real, jitter e descarte de frames:
+```bash
+python scripts/test_stream_latency.py
+```
+
+### 5. ⚡ Benchmark & Calibração do Detector MTCNN
+Testa resoluções de entrada e pré-escalonamento para manter a busca facial abaixo de 10-15ms:
+```bash
+python scripts/test_mtcnn_performance.py
+```
+
