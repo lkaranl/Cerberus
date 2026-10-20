@@ -1,5 +1,5 @@
 import re
-from typing import Optional, List
+from typing import Optional, List, Tuple
 import cv2
 import numpy as np
 
@@ -7,48 +7,147 @@ from app.core.logging import logger
 
 class PlateReader:
     """
-    Localizador e leitor de placas veiculares (ANPR / LPR).
+    Localizador e leitor neural de placas veiculares (ANPR / LPR).
     Otimizado para placas brasileiras (Mercosul e Tradicional).
-    Utiliza pré-processamento morfológico com suporte a OCR.
+    Utiliza PP-OCRv4 (DBNet + SVTR via ONNX Runtime) como motor SOTA primário,
+    com reparo morfológico de caracteres e fallback resiliente.
     """
     def __init__(self):
         # Padrões de placas do Brasil
-        # Mercosul: 3 letras, 1 número, 1 letra, 2 números (ex: BRA2E19)
+        # Mercosul: 3 letras, 1 número, 1 letra, 2 números (ex: BRA2E19, NEC4J83)
         self.mercosul_regex = re.compile(r"\b([A-Z]{3}[0-9][A-Z0-9][0-9]{2})\b")
         # Tradicional: 3 letras e 4 números (ex: ABC1234)
         self.tradicional_regex = re.compile(r"\b([A-Z]{3}-?[0-9]{4})\b")
 
+        # Mapeamentos de confusão comum em OCR entre letras e dígitos
+        self._char_to_digit = {"O": "0", "I": "1", "L": "1", "Z": "2", "S": "5", "B": "8", "G": "6", "Q": "0"}
+        self._digit_to_char = {"0": "O", "1": "I", "2": "Z", "5": "S", "8": "B", "6": "G"}
+
         self.ocr_engine = None
+        self.rapid_ocr = None
+        self.pytesseract = None
+        self.easyocr_reader = None
+
         self._init_ocr()
 
     def _init_ocr(self):
-        # Tenta carregar pytesseract ou easyocr se disponível
+        """Inicializa o motor de OCR priorizando PP-OCRv4 (RapidOCR / ONNX Runtime)."""
+        # 1. Tenta RapidOCR (PP-OCRv4 SOTA via ONNX Runtime)
+        try:
+            from rapidocr_onnxruntime import RapidOCR
+            # RapidOCR seleciona automaticamente CUDAExecutionProvider se disponível
+            self.rapid_ocr = RapidOCR()
+            self.ocr_engine = "rapidocr"
+            logger.info("⚡ Módulo LPR inicializado com PP-OCRv4 Neural SOTA (RapidOCR / ONNX Runtime).")
+            return
+        except Exception as e:
+            logger.debug(f"RapidOCR não disponível ou não instalado: {e}")
+
+        # 2. Fallback para PyTesseract
         try:
             import pytesseract
             self.ocr_engine = "pytesseract"
             self.pytesseract = pytesseract
-            logger.info("Módulo OCR de placas inicializado com PyTesseract.")
+            logger.info("Módulo OCR de placas inicializado com PyTesseract (Fallback).")
             return
         except ImportError:
             pass
 
+        # 3. Fallback para EasyOCR
         try:
             import easyocr
             self.easyocr_reader = easyocr.Reader(["en"], gpu=True)
             self.ocr_engine = "easyocr"
-            logger.info("Módulo OCR de placas inicializado com EasyOCR.")
+            logger.info("Módulo OCR de placas inicializado com EasyOCR (Fallback).")
             return
         except ImportError:
             pass
 
-        logger.info("OCR avançado opcional não instalado. Leitor de placas operando via detecção de contornos de placa.")
+        logger.warning("Nenhum motor de OCR instalado. Leitor de placas operando exclusivamente por heurística.")
 
-    def _extract_plate_text(self, plate_roi: np.ndarray) -> str:
-        """Executa OCR sobre a região de interesse da placa."""
+    def validate_and_repair_plate(self, raw_candidate: str) -> Optional[str]:
+        """
+        Valida e repara potenciais erros de confusão letra/número em placas brasileiras
+        respeitando a sintaxe estrita do padrão Mercosul (LLL N L NN) e Tradicional (LLL NNNN).
+        """
+        if not raw_candidate:
+            return None
+
+        # Limpeza preliminar: remove caracteres não alfanuméricos e converte para maiúsculo
+        clean = re.sub(r"[^A-Z0-9]", "", raw_candidate.upper().strip())
+
+        # Placas brasileiras têm exatamente 7 caracteres
+        if len(clean) != 7:
+            # Tenta encontrar substring de 7 caracteres compatível
+            match = self.mercosul_regex.search(clean) or self.tradicional_regex.search(clean)
+            if match:
+                clean = match.group(1).replace("-", "")
+            else:
+                return None
+
+        chars = list(clean)
+
+        # Regra 1: Posições 0, 1, 2 DEVEM ser letras (tanto Mercosul quanto Tradicional)
+        for i in range(3):
+            if chars[i].isdigit() and chars[i] in self._digit_to_char:
+                chars[i] = self._digit_to_char[chars[i]]
+
+        # Regra 2: Posição 3 DEVE ser dígito numérico (0-9)
+        if chars[3].isalpha() and chars[3] in self._char_to_digit:
+            chars[3] = self._char_to_digit[chars[3]]
+
+        # Regra 3: Posições 5 e 6 DEVEM ser dígitos numéricos (0-9)
+        for i in (5, 6):
+            if chars[i].isalpha() and chars[i] in self._char_to_digit:
+                chars[i] = self._char_to_digit[chars[i]]
+
+        repaired = "".join(chars)
+
+        # Validação final: verifica se atende à especificação Mercosul ou Tradicional
+        if self.mercosul_regex.fullmatch(repaired) or self.tradicional_regex.fullmatch(repaired):
+            return repaired
+
+        return None
+
+    def _read_with_rapidocr(self, img_bgr: np.ndarray) -> Optional[str]:
+        """Executa inferência neural com PP-OCRv4 via RapidOCR."""
+        if self.rapid_ocr is None or img_bgr is None or img_bgr.size == 0:
+            return None
+
+        try:
+            results, elapse = self.rapid_ocr(img_bgr)
+            if not results:
+                return None
+
+            best_plate = None
+            best_score = 0.0
+
+            for item in results:
+                # Cada item no RapidOCR é: [dt_boxes, text, score]
+                if len(item) < 3:
+                    continue
+                _box, text, score = item[0], item[1], float(item[2])
+
+                # Testa reparo e sintaxe de placa
+                plate = self.validate_and_repair_plate(text)
+                if plate and score > best_score:
+                    best_score = score
+                    best_plate = plate
+
+            if best_plate:
+                logger.info(f"⚡ [PP-OCRv4] Placa reconhecida: {best_plate} (conf: {best_score:.2f})")
+                return best_plate
+
+        except Exception as e:
+            logger.debug(f"Erro na inferência PP-OCRv4: {e}")
+
+        return None
+
+    def _read_with_legacy_ocr(self, plate_roi: np.ndarray) -> str:
+        """Executa OCR clássico (Tesseract / EasyOCR) como contingência."""
         if plate_roi is None or plate_roi.size == 0:
             return ""
 
-        # Pré-processamento: escala de cinza e binarização de alto contraste
         if len(plate_roi.shape) == 3:
             gray = cv2.cvtColor(plate_roi, cv2.COLOR_BGR2GRAY)
         else:
@@ -59,50 +158,57 @@ class PlateReader:
 
         raw_text = ""
         try:
-            if self.ocr_engine == "pytesseract":
+            if self.ocr_engine == "pytesseract" and self.pytesseract:
                 config = "-c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 --psm 8"
                 raw_text = self.pytesseract.image_to_string(thresh, config=config).strip().upper()
-            elif self.ocr_engine == "easyocr":
+            elif self.ocr_engine == "easyocr" and self.easyocr_reader:
                 results = self.easyocr_reader.readtext(thresh, detail=0)
                 raw_text = "".join(results).strip().upper()
         except Exception:
             pass
 
-        # Limpeza de caracteres espúrios
-        clean_text = re.sub(r"[^A-Z0-9]", "", raw_text)
-
-        # Checa padrão Mercosul
-        match_mercosul = self.mercosul_regex.search(clean_text)
-        if match_mercosul:
-            return match_mercosul.group(1)
-
-        # Checa padrão Tradicional
-        match_trad = self.tradicional_regex.search(clean_text)
-        if match_trad:
-            return match_trad.group(1).replace("-", "")
-
-        return ""
+        repaired = self.validate_and_repair_plate(raw_text)
+        return repaired if repaired else ""
 
     def read_plate(self, vehicle_crop: np.ndarray) -> str:
         """
-        Analisa o recorte do veículo, localiza a placa e tenta ler os caracteres.
-        Retorna a placa formatada ou string vazia se ilegível.
+        Analisa o recorte do veículo, localiza e decodifica a placa veicular.
+        Retorna a placa formatada (ex: 'NEC4J83') ou string vazia se não identificável.
         """
         if vehicle_crop is None or vehicle_crop.size == 0:
             return ""
 
         h, w = vehicle_crop.shape[:2]
 
-        # A placa geralmente fica na metade inferior do veículo
+        # -------------------------------------------------------------
+        # 1. Rota SOTA: PP-OCRv4 Neural (RapidOCR)
+        # -------------------------------------------------------------
+        if self.ocr_engine == "rapidocr":
+            # A placa em 99% dos casos está localizada nos 65% inferiores do veículo
+            roi_y1 = int(h * 0.35)
+            lower_crop = vehicle_crop[roi_y1:h, 0:w]
+
+            plate = self._read_with_rapidocr(lower_crop)
+            if plate:
+                return plate
+
+            # Fallback 1.1: Tenta no veículo completo caso o enquadramento seja atípico
+            plate_full = self._read_with_rapidocr(vehicle_crop)
+            if plate_full:
+                return plate_full
+
+        # -------------------------------------------------------------
+        # 2. Rota Legada / Fallback (Tesseract / EasyOCR / Contornos)
+        # -------------------------------------------------------------
         roi_y1 = int(h * 0.40)
         lower_crop = vehicle_crop[roi_y1:h, 0:w]
 
-        # Tenta ler no recorte inferior diretamente
-        detected = self._extract_plate_text(lower_crop)
+        # Tentativa no recorte inferior
+        detected = self._read_with_legacy_ocr(lower_crop)
         if detected:
             return detected
 
-        # Detecção de contornos retangulares de alta probabilidade de placa
+        # Detecção geométrica de contornos retangulares para isolar a placa
         try:
             gray = cv2.cvtColor(lower_crop, cv2.COLOR_BGR2GRAY)
             blur = cv2.bilateralFilter(gray, 9, 75, 75)
@@ -113,14 +219,13 @@ class PlateReader:
                 peri = cv2.arcLength(cnt, True)
                 approx = cv2.approxPolyDP(cnt, 0.02 * peri, True)
 
-                # Busca polígonos de 4 lados (retângulos)
+                # Busca polígonos de 4 lados (retângulos com proporção de placa brasileira)
                 if len(approx) == 4:
                     x, y, cw, ch = cv2.boundingRect(approx)
                     aspect_ratio = float(cw) / max(1, ch)
-                    # Placas brasileiras têm proporção entre 2.2 e 4.5
                     if 2.0 <= aspect_ratio <= 4.5 and cw >= 60 and ch >= 20:
                         candidate_plate = lower_crop[y:y+ch, x:x+cw]
-                        plate_text = self._extract_plate_text(candidate_plate)
+                        plate_text = self._read_with_legacy_ocr(candidate_plate)
                         if plate_text:
                             return plate_text
         except Exception:
