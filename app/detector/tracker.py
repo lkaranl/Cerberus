@@ -14,6 +14,7 @@ from app.detector.recognizer import face_recognizer
 from app.detector.visual_matcher import visual_matcher
 from app.detector.plate_reader import plate_reader
 from app.detector.person_reid import person_reid
+from app.ai.semantic_search import semantic_search
 
 def _save_evidence_disk(crop_path: str, crop_img: np.ndarray, full_path: str, annotated_frame: np.ndarray, web_path: str) -> None:
     """Grava as imagens de evidência em disco em thread separada sem bloquear a inferência."""
@@ -29,6 +30,15 @@ def _save_evidence_disk(crop_path: str, crop_img: np.ndarray, full_path: str, an
         cv2.imwrite(web_path, web_frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
     except Exception as err:
         logger.debug(f"Falha ao salvar evidências em disco: {err}")
+
+async def _index_semantic_embedding(event_id: str, crop_img: np.ndarray) -> None:
+    """Extrai e indexa o embedding multimodal CLIP em background assíncrono sem bloquear o tracking."""
+    try:
+        emb_bytes = await asyncio.to_thread(semantic_search.extract_image_embedding_bytes, crop_img)
+        if emb_bytes:
+            await db.update_event_embedding(event_id, emb_bytes)
+    except Exception as err:
+        logger.debug(f"Falha ao gerar embedding semântico em background para {event_id}: {err}")
 
 
 class TrackedEntity:
@@ -719,6 +729,9 @@ class CameraTrackerManager:
                 # Persistência assíncrona no SQLite (24/7 autônomo)
                 await db.save_event(event_record)
 
+                # Indexação vetorial semântica (CLIP) em background assíncrono
+                asyncio.create_task(_index_semantic_embedding(event_id, crop_img.copy()))
+
                 category_icons = {"person": "👤", "vehicle": "🚗", "pet": "🐾"}
                 icon = category_icons.get(track.entity_type, "🎯")
                 face_status = "com foto nítida do rosto" if track.has_face_captured else "visto de costas (aguardando rosto)"
@@ -777,6 +790,9 @@ class CameraTrackerManager:
                     "is_known": 1 if track.is_known else 0,
                     "face_confidence": track.match_confidence
                 })
+
+                # Atualiza assinatura semântica com o close nítido do rosto
+                asyncio.create_task(_index_semantic_embedding(track.active_event_id, face_crop_img.copy()))
 
                 logger.info(
                     f"📸 [Upgrade de Evidência] Rosto capturado para ID #{tid} ({track.identity_name}) em {self.camera_name}! "

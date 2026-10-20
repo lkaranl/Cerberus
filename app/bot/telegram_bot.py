@@ -98,6 +98,7 @@ class TelegramBot:
             {"command": "status", "description": "Ver status do sistema e telemetria"},
             {"command": "snapshot", "description": "Foto instantânea das câmeras ao vivo"},
             {"command": "alertas", "description": "Ver os últimos eventos detectados"},
+            {"command": "buscar", "description": "Busca semântica visual (ex: /buscar casaco vermelho)"},
             {"command": "pergunta", "description": "Pergunte à IA sobre o que aconteceu (ex: /pergunta quem veio hoje?)"},
             {"command": "resumo", "description": "Briefing executivo de segurança do dia"},
             {"command": "ajuda", "description": "Menu de comandos e configurações"}
@@ -352,6 +353,20 @@ class TelegramBot:
             await self._cmd_alerts(chat_id)
         elif cmd in ("/resumo", "/briefing", "/relatorio"):
             await self._cmd_briefing(chat_id)
+        elif cmd in ("/buscar", "/procurar", "/search", "/find"):
+            query = text[len(cmd):].strip()
+            if not query:
+                await self._send_text_message(
+                    chat_id,
+                    "💡 <b>Como usar a Busca Semântica:</b> Digite <code>/buscar</code> seguido da descrição visual.\n\n"
+                    "<i>Exemplos:</i>\n"
+                    "• <code>/buscar homem de casaco vermelho</code>\n"
+                    "• <code>/buscar carro prata estacionado</code>\n"
+                    "• <code>/buscar entregador de moto com capacete</code>\n"
+                    "• <code>/buscar cachorro preto no portão</code>"
+                )
+            else:
+                await self._cmd_semantic_search(chat_id, query)
         elif cmd in ("/pergunta", "/ia", "/ask"):
             # Pergunta explícita com comando
             question = text[len(cmd):].strip()
@@ -383,12 +398,64 @@ class TelegramBot:
             f"🔹 <b>/status</b> - Telemetria do servidor, GPU e FPS das câmeras\n"
             f"🔹 <b>/snapshot</b> - Captura fotos das câmeras ao vivo agora\n"
             f"🔹 <b>/alertas</b> - Lista os últimos 5 eventos registrados\n"
+            f"🔹 <b>/buscar [descrição]</b> - Busca visual por IA (ex: casaco vermelho, moto)\n"
             f"🔹 <b>/resumo</b> - Briefing executivo do dia elaborado pela IA\n"
             f"🔹 <b>/pergunta [texto]</b> - Pergunte sobre histórico das câmeras\n"
             f"🔹 <b>/ajuda</b> - Exibe esta mensagem de suporte\n\n"
             f"💬 <i>Dica: Você também pode me mandar mensagens de texto diretamente, como se falasse com um porteiro!</i>"
         )
         await self._send_text_message(chat_id, help_text)
+
+    async def _cmd_semantic_search(self, chat_id: str, query: str) -> None:
+        """Executa busca multimodal em linguagem natural (CLIP) no banco de eventos."""
+        from app.ai.semantic_search import semantic_search
+        await self._send_text_message(chat_id, f"🔍 <i>Pesquisando eventos com IA para:</i> '<b>{query}</b>'...")
+
+        results = await semantic_search.search_events(query, top_k=3, min_score=0.15)
+        if not results:
+            await self._send_text_message(
+                chat_id,
+                f"❌ Nenhum evento encontrado com características visuais correspondentes a: '<i>{query}</i>'."
+            )
+            return
+
+        await self._send_text_message(
+            chat_id,
+            f"🎯 <b>Encontrados {len(results)} evento(s) correspondente(s):</b>"
+        )
+
+        for res in results:
+            score = res.get("similarity_score", 0.0)
+            score_pct = int(score * 100) if score <= 1.0 else int(score)
+            sim_badge = "🔥 Alta correspondência" if score >= 0.25 else "🔎 Correspondência provável"
+
+            ts_str = res.get("timestamp", "")
+            try:
+                dt = datetime.fromisoformat(ts_str)
+                hora_fmt = dt.strftime("%d/%m/%Y às %H:%M:%S")
+            except Exception:
+                hora_fmt = ts_str
+
+            entity_type = res.get("entity_type", "person")
+            icon = {"person": "👤", "vehicle": "🚗", "pet": "🐾"}.get(entity_type, "🎯")
+            nome = res.get("person_name", "Desconhecido")
+            placa = res.get("license_plate", "")
+            placa_str = f" | Placa: <code>{placa}</code>" if placa else ""
+
+            caption = (
+                f"{icon} <b>{nome}</b>{placa_str}\n"
+                f"📹 <b>Câmera:</b> {res.get('camera_name', 'Câmera')}\n"
+                f"🕒 <b>Quando:</b> {hora_fmt}\n"
+                f"📊 <b>Similaridade Visual:</b> {score_pct}% ({sim_badge})\n"
+                f"🆔 <code>{res.get('event_id')}</code>"
+            )
+
+            crop_path = res.get("crop_path") or res.get("full_path")
+            if crop_path and Path(crop_path).exists():
+                await self._send_single_photo(chat_id, Path(crop_path), caption, disable_notification=True)
+            else:
+                await self._send_text_message(chat_id, caption)
+            await asyncio.sleep(0.3)
 
     async def _cmd_ai_question(self, chat_id: str, question: str) -> None:
         """Processa perguntas em linguagem natural usando eventos do SQLite + OpenRouter."""

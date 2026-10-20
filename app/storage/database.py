@@ -3,6 +3,7 @@ import asyncio
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Dict, Any
+import numpy as np
 from app.core.config import settings
 from app.core.logging import logger
 
@@ -55,6 +56,8 @@ class Database:
                     conn.execute("ALTER TABLE events ADD COLUMN entity_type TEXT DEFAULT 'person'")
                 if "license_plate" not in existing_cols:
                     conn.execute("ALTER TABLE events ADD COLUMN license_plate TEXT DEFAULT ''")
+                if "semantic_embedding" not in existing_cols:
+                    conn.execute("ALTER TABLE events ADD COLUMN semantic_embedding BLOB")
 
                 conn.commit()
 
@@ -85,8 +88,8 @@ class Database:
                         event_id, camera_id, camera_name, timestamp,
                         tracking_id, confidence, crop_path, full_path,
                         person_name, is_known, face_confidence,
-                        entity_type, license_plate
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        entity_type, license_plate, semantic_embedding
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         event["event_id"],
@@ -101,7 +104,8 @@ class Database:
                         1 if event.get("is_known") else 0,
                         float(event.get("face_confidence", 0.0)),
                         event.get("entity_type", "person"),
-                        event.get("license_plate", "")
+                        event.get("license_plate", ""),
+                        event.get("semantic_embedding")
                     )
                 )
                 conn.commit()
@@ -340,5 +344,92 @@ class Database:
         logger.info(f"🧹 Banco de dados de eventos limpo: {count} registros removidos.")
         return count
 
+    async def search_events_by_similarity(self, query_emb: np.ndarray, top_k: int = 5, min_score: float = 0.18) -> List[Dict[str, Any]]:
+        """Busca eventos comparando similaridade de cosseno de embeddings visuais CLIP."""
+        def _search():
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT id, event_id, camera_id, camera_name, timestamp,
+                           person_name, is_known, entity_type, license_plate,
+                           crop_path, full_path, semantic_embedding
+                    FROM events
+                    WHERE semantic_embedding IS NOT NULL
+                    ORDER BY id DESC
+                    LIMIT 500
+                """)
+                rows = cursor.fetchall()
+                if not rows:
+                    return []
+
+                scored = []
+                for row in rows:
+                    raw_blob = row["semantic_embedding"]
+                    if not raw_blob or len(raw_blob) < 512 * 4:
+                        continue
+                    vec = np.frombuffer(raw_blob, dtype=np.float32)
+                    sim = float(np.dot(vec, query_emb))
+                    if sim >= min_score:
+                        d = dict(row)
+                        d.pop("semantic_embedding", None)
+                        d["similarity_score"] = round(sim, 3)
+                        scored.append(d)
+
+                scored.sort(key=lambda x: x["similarity_score"], reverse=True)
+                return scored[:top_k]
+
+        return await asyncio.to_thread(_search)
+
+    async def search_events_by_text(self, query_text: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """Busca textual de contingência por metadados, placas ou nomes."""
+        def _text_search():
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                pattern = f"%{query_text}%"
+                cursor.execute("""
+                    SELECT id, event_id, camera_id, camera_name, timestamp,
+                           person_name, is_known, entity_type, license_plate,
+                           crop_path, full_path
+                    FROM events
+                    WHERE person_name LIKE ? OR entity_type LIKE ? OR camera_name LIKE ? OR license_plate LIKE ?
+                    ORDER BY id DESC
+                    LIMIT ?
+                """, (pattern, pattern, pattern, pattern, limit))
+                rows = cursor.fetchall()
+                results = []
+                for r in rows:
+                    d = dict(r)
+                    d["similarity_score"] = 1.0
+                    results.append(d)
+                return results
+
+        return await asyncio.to_thread(_text_search)
+
+    async def get_events_without_embedding(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """Retorna eventos recentes que ainda não possuem embedding semântico indexado."""
+        def _get():
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT event_id, crop_path, full_path
+                    FROM events
+                    WHERE semantic_embedding IS NULL
+                    ORDER BY id DESC
+                    LIMIT ?
+                """, (limit,))
+                return [dict(r) for r in cursor.fetchall()]
+        return await asyncio.to_thread(_get)
+
+    async def update_event_embedding(self, event_id: str, embedding_bytes: bytes) -> bool:
+        """Atualiza a assinatura semântica de um evento."""
+        def _update():
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("UPDATE events SET semantic_embedding = ? WHERE event_id = ?", (embedding_bytes, event_id))
+                conn.commit()
+                return cursor.rowcount > 0
+        return await asyncio.to_thread(_update)
+
 
 db = Database()
+

@@ -123,7 +123,7 @@ graph TD
 | **Passo 1** | **PP-OCRv4 (LPR Neural)** | ✅ **Concluído & Validado** | Leitura rápida e confiável de placas no portão e garagem |
 | **Passo 2** | **OSNet (Deep Re-ID)** | ✅ **Concluído & Validado** | Rastreamento de moradores mesmo de costas/capuz |
 | **Passo 3** | **YOLO11 (TensorRT FP16)** | ✅ **Concluído & Validado** | 142.2 FPS na GTX 1660 com atenção espacial C2PSA |
-| **Passo 4** | **MobileCLIP / SigLIP** | ⏳ **Próximo** | Busca no histórico por texto livre no Telegram |
+| **Passo 4** | **CLIP Multilíngue SOTA** | 🚀 **Em Validação** | Busca no histórico por texto livre em português no Telegram |
 | **Passo 5** | **Edge VLM (Moondream2)** | 📋 Planejado | Análise visual avançada 100% offline na GPU |
 
 ---
