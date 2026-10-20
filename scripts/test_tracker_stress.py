@@ -35,13 +35,27 @@ async def run_tracker_stress():
     from app.detector.recognizer import face_recognizer
     from app.detector.tracker import CameraTrackerManager
     from app.storage.database import db
+    import cv2
 
     detector_engine.initialize()
     face_recognizer.initialize()
-    await db.initialize()
+    db.init_db()
 
     captured_events = []
     updated_events = []
+
+    # Procura foto real de morador para simular a virada de frente realista
+    real_face_img = None
+    known_dir = Path("data/known_faces")
+    if known_dir.exists():
+        for ext in ("*.jpg", "*.jpeg", "*.png"):
+            found = list(known_dir.rglob(ext))
+            if found:
+                loaded = cv2.imread(str(found[0]))
+                if loaded is not None:
+                    real_face_img = loaded
+                    print(f"✓ Usando foto de referência para simulação facial: {found[0].parent.name}/{found[0].name}")
+                    break
 
     async def mock_event_callback(evt):
         if evt.get("_msg_type") == "EVENT_UPDATED":
@@ -85,16 +99,21 @@ async def run_tracker_stress():
 
             # Simula que nos primeiros 10 frames a pessoa está de costas (sem rosto visível)
             # A partir do frame 10, ela se vira de frente para a câmera!
+            head_x1 = px1 + 45
+            head_y1 = py1 + 20
+            head_x2 = px1 + 175
+            head_y2 = py1 + 190
+            hw = head_x2 - head_x1
+            hh = head_y2 - head_y1
+
             if f_idx >= 10:
-                # Adiciona traços faciais na área da cabeça para o MTCNN detectar
-                head_x1 = px1 + 50
-                head_y1 = py1 + 20
-                head_x2 = px1 + 170
-                head_y2 = py1 + 180
-                # Injeta um padrão de contraste facial sintético
-                dummy_frame[head_y1:head_y2, head_x1:head_x2] = np.random.randint(90, 240, (head_y2 - head_y1, head_x2 - head_x1, 3), dtype=np.uint8)
+                if real_face_img is not None:
+                    resized_face = cv2.resize(real_face_img, (hw, hh), interpolation=cv2.INTER_LINEAR)
+                    dummy_frame[head_y1:head_y2, head_x1:head_x2] = resized_face
+                else:
+                    dummy_frame[head_y1:head_y2, head_x1:head_x2] = np.random.randint(90, 240, (hh, hw, 3), dtype=np.uint8)
             else:
-                dummy_frame[py1:py1 + 200, px1:px2] = (50, 40, 35)  # Costas
+                dummy_frame[head_y1:head_y2, head_x1:head_x2] = (50, 40, 35)  # Costas
 
             detections.append(det_person)
 

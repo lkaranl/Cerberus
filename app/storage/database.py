@@ -70,6 +70,10 @@ class Database:
             logger.error(f"Erro ao inicializar banco de dados: {e}")
             raise
 
+    def initialize(self) -> None:
+        """Alias de conveniência para init_db."""
+        self.init_db()
+
     async def save_event(self, event: Dict[str, Any]) -> int:
         """Salva um novo registro de detecção (Pessoa, Veículo ou Pet) no SQLite."""
         def _insert():
