@@ -103,19 +103,23 @@ class PersonReID:
             self.output_name = output_meta.name
             self.input_shape = input_meta.shape
 
-            # Determina altura e largura esperadas pelo modelo
-            # Padrão OSNet: (batch, 3, 256, 128)
+            # Determina altura, largura e batch exigidos pelo modelo
+            # Ex: [16, 3, 256, 128]
+            req_batch = 1
             req_h = 256
             req_w = 128
             if len(self.input_shape) == 4:
+                if isinstance(self.input_shape[0], int) and self.input_shape[0] > 0:
+                    req_batch = self.input_shape[0]
                 if isinstance(self.input_shape[2], int) and self.input_shape[2] > 0:
                     req_h = self.input_shape[2]
                 if isinstance(self.input_shape[3], int) and self.input_shape[3] > 0:
                     req_w = self.input_shape[3]
+            self.required_batch = req_batch
             self.target_size = (req_w, req_h)
 
             self.is_ready = True
-            logger.info(f"⚡ OSNet Re-ID inicializado via {active_provider}! Entrada: '{self.input_name}' {self.input_shape} -> Alvo: {self.target_size}")
+            logger.info(f"⚡ OSNet Re-ID inicializado via {active_provider}! Batch: {self.required_batch}, Entrada: '{self.input_name}' {self.input_shape} -> Alvo: {self.target_size}")
             return True
 
         except Exception as e:
@@ -150,9 +154,19 @@ class PersonReID:
             blob = np.transpose(normalized, (2, 0, 1))
             blob = np.expand_dims(blob, axis=0).astype(np.float32)
 
+            # Ajusta batch se o modelo ONNX tiver dimensão estática de batch (ex: 16)
+            req_batch = getattr(self, "required_batch", 1)
+            if req_batch > 1:
+                batch_input = np.repeat(blob, req_batch, axis=0)
+            else:
+                batch_input = blob
+
             # 4. Inferência via ONNX Runtime
-            outputs = self.session.run(None, {self.input_name: blob})
-            raw_emb = outputs[0].flatten().astype(np.float32)
+            outputs = self.session.run(None, {self.input_name: batch_input})
+            if req_batch > 1:
+                raw_emb = outputs[0][0].flatten().astype(np.float32)
+            else:
+                raw_emb = outputs[0].flatten().astype(np.float32)
 
             # 5. Normalização L2 (para comparação direta via produto escalar / cosseno)
             norm = np.linalg.norm(raw_emb)
