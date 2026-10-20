@@ -71,8 +71,19 @@ class RTSPCapture:
         self._release_resources()
         logger.info(f"Captura RTSP finalizada para {self.camera_name} ({self.camera_id})")
 
+    # Cache em memória para resolução das câmeras (evita probes lentos repetidos)
+    _RESOLUTION_CACHE: dict = {}
+
     def _probe_resolution(self) -> Tuple[int, int]:
-        """Obtém a resolução nativa da câmera via OpenCV para inicializar o decodificador NVDEC."""
+        """Obtém a resolução da câmera com cache imediato para conexões subsequentes."""
+        if self.rtsp_url in RTSPCapture._RESOLUTION_CACHE:
+            return RTSPCapture._RESOLUTION_CACHE[self.rtsp_url]
+
+        # Resolução padrão das câmeras Tapo stream1 (2K / 3MP)
+        if "stream1" in self.rtsp_url:
+            RTSPCapture._RESOLUTION_CACHE[self.rtsp_url] = (2304, 1296)
+            return (2304, 1296)
+
         try:
             temp_cap = cv2.VideoCapture(self.rtsp_url, cv2.CAP_FFMPEG)
             temp_cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
@@ -81,10 +92,14 @@ class RTSPCapture:
                 h = int(temp_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
                 temp_cap.release()
                 if w > 0 and h > 0:
+                    RTSPCapture._RESOLUTION_CACHE[self.rtsp_url] = (w, h)
                     return (w, h)
         except Exception:
             pass
-        return (1920, 1080)
+
+        default_res = (2304, 1296)
+        RTSPCapture._RESOLUTION_CACHE[self.rtsp_url] = default_res
+        return default_res
 
     def _open_stream(self) -> bool:
         """Abre a conexão RTSP priorizando NVIDIA NVDEC com fallback para OpenCV."""

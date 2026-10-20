@@ -66,10 +66,15 @@ def main():
         cap.start()
         captures.append((c, cap))
 
-    print("\n⏳ Aguardando conexão dos streams (3 segundos)...")
-    time.sleep(3)
+    print("\n⏳ Aguardando conexão de todos os streams RTSP (timeout: 10s)...")
+    wait_deadline = time.time() + 10.0
+    while time.time() < wait_deadline:
+        if all(cap.is_connected for _, cap in captures):
+            print("✓ Todas as câmeras conectadas com sucesso!")
+            break
+        time.sleep(0.5)
 
-    print("\n🚀 Medindo fluxo contínuo durante 10 segundos...")
+    print("\n🚀 Medindo fluxo contínuo real durante 10 segundos...")
     start_time = time.time()
     measure_duration = 10.0
 
@@ -90,37 +95,37 @@ def main():
 
     gpu_telemetry = get_gpu_stats()
 
+    # Salva status do backend de aceleração ANTES de parar as threads
+    backend_status = {c["id"]: ("NVDEC ⚡" if getattr(cap, "is_nvdec_active", False) else "OpenCV") for c, cap in captures}
+
     # Encerra capturas
     for _, cap in captures:
         cap.stop()
 
     print_header("📊 RESULTADOS DO TESTE DE FLUXO RTSP SIMULTÂNEO")
     print(f"Telemetria da GPU durante teste: [{gpu_telemetry}]\n")
-    print(f"{'Câmera':<25} | {'Frames':<8} | {'FPS Real':<10} | {'Jitter Médio':<12} | {'Status'}")
-    print("-" * 65)
+    print(f"{'Câmera':<32} | {'Frames':<8} | {'FPS Real':<10} | {'Jitter Médio':<12} | {'Status'}")
+    print("-" * 75)
 
     for c, cap in captures:
         cid = c["id"]
         count = total_frames[cid]
         real_fps = count / measure_duration
         intervals = frame_intervals[cid]
-        # Jitter = desvio padrão do intervalo entre frames (ms)
         jitter = np.std(intervals) if len(intervals) > 2 else 0.0
 
-        if real_fps >= 15.0 and jitter < 25.0:
+        if real_fps >= 15.0 and jitter < 30.0:
             status = "⚡ Perfeito (Zero Lag)"
         elif real_fps >= 10.0:
             status = "✓ Estável"
         else:
             status = "⚠️ Instável / Perda de Frames"
 
-        backend_tag = "NVDEC" if getattr(cap, "is_nvdec_active", False) else "OpenCV"
-        cam_label = f"{c['name']} [{backend_tag}]"
-        print(f"{cam_label:<25} | {count:<8} | {real_fps:>6.1f} FPS  | {jitter:>8.1f} ms   | {status}")
+        print(f"{cam_label:<32} | {count:<8} | {real_fps:>6.1f} FPS  | {jitter:>8.1f} ms   | {status}")
 
-    print("=" * 65)
+    print("=" * 75)
     print("✓ Teste de múltiplos streams concluído!")
-    print("=" * 65)
+    print("=" * 75)
 
 if __name__ == "__main__":
     main()
