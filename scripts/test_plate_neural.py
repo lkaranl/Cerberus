@@ -54,7 +54,12 @@ def main():
                 if raw_results:
                     for box, text, conf in raw_results:
                         repaired = plate_reader.validate_and_repair_plate(text)
-                        print(f"    - Texto: '{text}' | Confiança: {conf:.2f} | Padrão Placa: {repaired}")
+                        try:
+                            f_conf = float(conf)
+                            conf_str = f"{f_conf:.2f}"
+                        except Exception:
+                            conf_str = str(conf)
+                        print(f"    - Texto: '{text}' | Confiança: {conf_str} | Padrão Placa: {repaired}")
                 else:
                     print("    (Nenhum texto detectado)")
 
