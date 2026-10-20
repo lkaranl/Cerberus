@@ -160,22 +160,24 @@ class RiskEvaluator:
                 {"role": "user", "content": user_content}
             ],
             "temperature": 0.1,
-            "max_tokens": 120
+            "max_tokens": 400
         }
 
         try:
-            timeout = float(settings.openrouter_timeout or 12.0)
+            timeout = float(settings.openrouter_timeout or 15.0)
             async with httpx.AsyncClient(timeout=timeout) as client:
                 resp = await client.post(self.api_url, headers=headers, json=data)
                 if resp.status_code == 200:
                     resp_json = resp.json()
-                    raw_text = resp_json["choices"][0]["message"]["content"].strip()
+                    msg = resp_json.get("choices", [{}])[0].get("message", {})
+                    raw_text = (msg.get("content") or "").strip()
                     # Limpeza de blocos markdown caso o modelo insira
                     if raw_text.startswith("```"):
                         raw_text = raw_text.strip("`").replace("json", "").strip()
-                    parsed = json.loads(raw_text)
-                    parsed["avaliador"] = f"openrouter:{model}"
-                    return parsed
+                    if raw_text:
+                        parsed = json.loads(raw_text)
+                        parsed["avaliador"] = f"openrouter:{model}"
+                        return parsed
                 else:
                     logger.warning(f"⚠️ OpenRouter retornou HTTP {resp.status_code}: {resp.text[:120]}. Usando fallback.")
         except Exception as err:
