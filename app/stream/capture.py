@@ -33,8 +33,11 @@ class RTSPCapture:
         self._cap: Optional[cv2.VideoCapture] = None
         self._proc: Optional[subprocess.Popen] = None
 
-        # Fila de tamanho 1 para manter sempre e apenas o frame mais recente
+        # Fila e buffer thread-safe para o frame mais recente
         self._frame_queue: queue.Queue = queue.Queue(maxsize=1)
+        self._latest_raw_frame: Optional[np.ndarray] = None
+        self._frame_id: int = 0
+        self._frame_lock = threading.Lock()
 
         # Telemetria e métricas
         self.is_connected: bool = False
@@ -261,6 +264,10 @@ class RTSPCapture:
             self._fps_timer = now
 
     def _update_queue(self, frame: np.ndarray) -> None:
+        with self._frame_lock:
+            self._latest_raw_frame = frame
+            self._frame_id += 1
+
         try:
             self._frame_queue.put_nowait(frame)
         except queue.Full:
@@ -268,7 +275,10 @@ class RTSPCapture:
                 _ = self._frame_queue.get_nowait()
             except queue.Empty:
                 pass
-            self._frame_queue.put_nowait(frame)
+            try:
+                self._frame_queue.put_nowait(frame)
+            except queue.Full:
+                pass
 
     def _capture_loop(self) -> None:
         """Loop contínuo de captura e auto-reconexão com suporte a NVDEC e OpenCV."""
@@ -325,7 +335,10 @@ class RTSPCapture:
 
     def get_latest_frame(self) -> Optional[np.ndarray]:
         """Retorna o frame mais recente capturado ou None se indisponível."""
-        try:
-            return self._frame_queue.get_nowait()
-        except queue.Empty:
-            return None
+        with self._frame_lock:
+            return self._latest_raw_frame
+
+    def get_latest_frame_and_id(self) -> Tuple[Optional[np.ndarray], int]:
+        """Retorna o frame mais recente e seu identificador sequencial único de forma thread-safe."""
+        with self._frame_lock:
+            return self._latest_raw_frame, self._frame_id

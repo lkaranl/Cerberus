@@ -25,8 +25,10 @@ class StreamManager:
 
         # Armazenamento do último frame processado (JPEG e raw)
         self.latest_annotated_jpeg: Dict[str, bytes] = {}
+        self.latest_detections: Dict[str, Dict[str, Any]] = {}
         self.latest_telemetry: Dict[str, Dict[str, Any]] = {}
         self.inference_fps: Dict[str, float] = {}
+        self.stream_fps: Dict[str, float] = {}
 
         # Clientes WebSocket conectados para receber eventos em tempo real
         self._event_listeners: Set[asyncio.Queue] = set()
@@ -116,7 +118,7 @@ class StreamManager:
         self._running = True
         self.load_cameras_config()
 
-        # Inicia captura e loop dedicado para cada câmera ativa
+        # Inicia captura e loops dedicados de stream e inferência para cada câmera ativa
         for cam in self.cameras_config:
             if cam.active:
                 capture = RTSPCapture(cam.id, cam.name, cam.url)
@@ -130,15 +132,23 @@ class StreamManager:
                 )
                 self.trackers[cam.id] = tracker
                 self.inference_fps[cam.id] = 0.0
+                self.stream_fps[cam.id] = 0.0
 
-                # Cada câmera roda seu próprio loop independente, eliminando engavetamento
-                task = asyncio.create_task(
-                    self._camera_inference_loop(cam),
+                # Task 1: Streaming Web contínuo de alta taxa (20-25 FPS) com anotações visuais
+                stream_task = asyncio.create_task(
+                    self._camera_stream_worker(cam),
+                    name=f"stream-{cam.id}"
+                )
+                self._camera_tasks[f"stream-{cam.id}"] = stream_task
+
+                # Task 2: Inferência pesada de IA desacoplada (YOLO + ArcFace + OSNet + Alertas)
+                infer_task = asyncio.create_task(
+                    self._camera_inference_worker(cam),
                     name=f"infer-{cam.id}"
                 )
-                self._camera_tasks[cam.id] = task
+                self._camera_tasks[f"infer-{cam.id}"] = infer_task
 
-        logger.info(f"StreamManager iniciado com {len(self._camera_tasks)} pipelines paralelos independentes.")
+        logger.info(f"StreamManager iniciado com {len(self._camera_tasks)} workers assíncronos desacoplados.")
 
     def stop(self) -> None:
         """Para todas as capturas e encerra o pipeline."""
@@ -152,44 +162,46 @@ class StreamManager:
 
         self.captures.clear()
         self.trackers.clear()
+        self.latest_detections.clear()
         logger.info("StreamManager finalizado.")
 
-    async def _camera_inference_loop(self, cam: CameraConfig) -> None:
+    async def _camera_stream_worker(self, cam: CameraConfig) -> None:
         """
-        Worker assíncrono dedicado exclusivo para uma câmera específica.
-        Garante que a Câmera do Portão processe a 18-30 FPS sem esperar
-        por nenhuma outra câmera do sistema.
+        Worker de streaming contínuo de alta taxa (20-25 FPS).
+        Gera os frames JPEG com as anotações visuais atualizadas sem esperar pela IA,
+        garantindo fluidez máxima no navegador e nas conexões WebSocket.
         """
         capture = self.captures.get(cam.id)
-        tracker = self.trackers.get(cam.id)
         if not capture:
             return
 
         fps_counter = 0
         fps_timer = time.time()
+        last_frame_id = -1
 
         while self._running:
             try:
-                raw_frame = capture.get_latest_frame()
+                raw_frame, frame_id = capture.get_latest_frame_and_id()
                 if raw_frame is None:
-                    await asyncio.sleep(0.005)
+                    await asyncio.sleep(0.01)
                     continue
 
-                # Executa detecção YOLO/TensorRT em thread pool separada
-                detections = await asyncio.to_thread(
-                    detector_engine.detect,
-                    raw_frame,
-                    cam.confidence_threshold,
-                    settings.iou_threshold
-                )
+                # Evita recodificar o mesmo frame se a câmera física ainda não enviou um novo
+                if frame_id == last_frame_id:
+                    await asyncio.sleep(0.008)
+                    continue
 
-                # Processa rastreamento, reconhecimento facial e anotação do frame
-                if tracker:
-                    annotated_frame, _ = await tracker.process_tracks(raw_frame, detections)
+                last_frame_id = frame_id
+
+                # Aplica as últimas anotações visuais geradas pelo tracker (válidas por até 1.2s)
+                det_info = self.latest_detections.get(cam.id)
+                now = time.time()
+                if det_info and (now - det_info.get("timestamp", 0.0) <= 1.2) and det_info.get("detections"):
+                    annotated_frame = detector_engine.draw_annotations(raw_frame.copy(), det_info["detections"])
                 else:
-                    annotated_frame = detector_engine.draw_annotations(raw_frame, detections)
+                    annotated_frame = raw_frame
 
-                # Redimensiona no servidor com interpolação rápida (INTER_LINEAR)
+                # Redimensiona no servidor com interpolação linear rápida
                 h_ann, w_ann = annotated_frame.shape[:2]
                 if settings.stream_max_width > 0 and w_ann > settings.stream_max_width:
                     scale = settings.stream_max_width / w_ann
@@ -201,27 +213,87 @@ class StreamManager:
                 else:
                     stream_frame = annotated_frame
 
-                # Codifica o frame anotado para JPEG otimizado
+                # Codifica para JPEG otimizado
                 encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), settings.stream_quality]
                 success, buffer = cv2.imencode(".jpg", stream_frame, encode_param)
                 if success:
                     self.latest_annotated_jpeg[cam.id] = buffer.tobytes()
 
-                # Atualiza métricas de FPS de inferência
+                # Contabilidade de FPS do stream web
                 fps_counter += 1
+                elapsed = now - fps_timer
+                if elapsed >= 1.0:
+                    self.stream_fps[cam.id] = round(fps_counter / elapsed, 1)
+                    fps_counter = 0
+                    fps_timer = now
+
+                # Intervalo suave para cravar ~25 FPS
+                await asyncio.sleep(0.01)
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Erro no stream worker da câmera {cam.name}: {e}")
+                await asyncio.sleep(0.05)
+
+    async def _camera_inference_worker(self, cam: CameraConfig) -> None:
+        """
+        Worker de inferência pesada de IA desacoplada.
+        Processa detecção YOLO, reconhecimento facial InsightFace, Re-ID OSNet,
+        leitura de placas e alertas sem impactar o FPS de vídeo da interface web.
+        """
+        capture = self.captures.get(cam.id)
+        tracker = self.trackers.get(cam.id)
+        if not capture:
+            return
+
+        fps_counter = 0
+        fps_timer = time.time()
+        last_inferred_id = -1
+
+        while self._running:
+            try:
+                raw_frame, frame_id = capture.get_latest_frame_and_id()
+                if raw_frame is None or frame_id == last_inferred_id:
+                    await asyncio.sleep(0.01)
+                    continue
+
+                last_inferred_id = frame_id
+
+                # Executa detecção YOLO/TensorRT em thread pool separada
+                detections = await asyncio.to_thread(
+                    detector_engine.detect,
+                    raw_frame,
+                    cam.confidence_threshold,
+                    settings.iou_threshold
+                )
+
+                # Processa rastreamento, consenso biométrico e disparo de alertas
+                if tracker:
+                    await tracker.process_tracks(raw_frame, detections)
+
+                # Compartilha as detecções enriquecidas (com nome, status, cor) para o stream_worker
                 now = time.time()
+                self.latest_detections[cam.id] = {
+                    "detections": detections,
+                    "timestamp": now
+                }
+
+                # Métricas de FPS de inferência da IA
+                fps_counter += 1
                 elapsed = now - fps_timer
                 if elapsed >= 1.0:
                     self.inference_fps[cam.id] = round(fps_counter / elapsed, 1)
                     fps_counter = 0
                     fps_timer = now
 
-                # Telemetria em tempo real
+                # Telemetria consolidada em tempo real
                 self.latest_telemetry[cam.id] = {
                     "camera_id": cam.id,
                     "camera_name": cam.name,
                     "connected": capture.is_connected,
                     "capture_fps": capture.fps,
+                    "stream_fps": self.stream_fps.get(cam.id, 0.0),
                     "inference_fps": self.inference_fps.get(cam.id, 0.0),
                     "resolution": capture.resolution,
                     "detections_count": len(detections),
@@ -229,14 +301,14 @@ class StreamManager:
                     "timestamp": now
                 }
 
-                # Cede micro-fatia de tempo ao event loop
-                await asyncio.sleep(0.001)
+                # Micro-pausa para ceder controle ao event loop
+                await asyncio.sleep(0.005)
 
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(f"Erro no pipeline da câmera {cam.name}: {e}")
-                await asyncio.sleep(0.1)
+                logger.error(f"Erro no pipeline de IA da câmera {cam.name}: {e}")
+                await asyncio.sleep(0.05)
 
     def get_camera_statuses(self) -> List[Dict[str, Any]]:
         """Retorna status consolidado de todas as câmeras."""
@@ -245,6 +317,7 @@ class StreamManager:
             capture = self.captures.get(cam.id)
             is_connected = capture.is_connected if capture else False
             capture_fps = capture.fps if capture else 0.0
+            stream_fps = self.stream_fps.get(cam.id, 0.0)
             inf_fps = self.inference_fps.get(cam.id, 0.0)
             res = capture.resolution if capture else (0, 0)
 
@@ -257,6 +330,7 @@ class StreamManager:
                 "confidence_threshold": cam.confidence_threshold,
                 "connected": is_connected,
                 "capture_fps": capture_fps,
+                "stream_fps": stream_fps,
                 "inference_fps": inf_fps,
                 "resolution": f"{res[0]}x{res[1]}" if res[0] > 0 else "N/A",
                 "nvdec_active": getattr(capture, "is_nvdec_active", False) if capture else False
