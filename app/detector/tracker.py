@@ -689,10 +689,15 @@ class CameraTrackerManager:
             is_upgrade = getattr(track, "needs_identity_upgrade", False)
 
             # Critérios para evitar repetições sem perder alvos rápidos:
-            # 1. Pessoas ou Veículos: >= settings.min_consecutive_frames (2 frames)
-            # 2. Pets rápidos (cães/gatos passando em corrida): se confiança >= 0.45, dispara imediatamente
+            # 1. Pessoas com rosto capturado, conhecidos ou veículos: >= settings.min_consecutive_frames (2 frames)
+            # 2. Pessoas desconhecidas sem rosto capturado: exige >= 3 frames para eliminar vultos/animais fugazes
+            # 3. Pets rápidos (cães/gatos passando em corrida): se confiança >= 0.45, dispara imediatamente
+            required_frames = settings.min_consecutive_frames
+            if track.entity_type == "person" and not track.has_face_captured and not track.is_known:
+                required_frames = max(3, settings.min_consecutive_frames + 1)
+
             is_fast_pet = (track.entity_type == "pet" and det["confidence"] >= 0.45)
-            is_stable = (track.consecutive_frames >= settings.min_consecutive_frames) or is_fast_pet
+            is_stable = (track.consecutive_frames >= required_frames) or is_fast_pet
 
             # Caso 1: Novo Alerta Inicial
             if is_stable and not track.event_triggered:
