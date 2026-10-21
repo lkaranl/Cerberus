@@ -3,236 +3,86 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cerberus AI — Central de Comando Tático & Biometria 2K</title>
+  <title>Cerberus AI — Central CCTV Clean 2K</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/style.css?v=20261021_cc">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css?v=20261021_clean">
 </head>
-<body class="command-center-body">
-  <div class="app-container" id="app-container">
-    
-    <!-- HEADER TÁTICO (COMMAND BAR) -->
-    <header class="app-header">
-      <div class="brand">
-        <div class="brand-radar">
-          <div class="radar-sweep"></div>
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-            <path d="M12 2L2 7l10 5 10-5-10-5Z"/>
-            <path d="M2 17l10 5 10-5"/>
-            <path d="M2 12l10 5 10-5"/>
-          </svg>
+<body class="clean-cctv-body">
+
+  <!-- GRID CCTV 2X2 EM TELA INTEIRA -->
+  <div class="cctv-grid-container" id="cctv-grid">
+    <!-- CÂMERAS 1, 2 E 3 INJETADAS DINAMICAMENTE VIA JS -->
+
+    <!-- 4º QUADRANTE: HORÁRIO & RADAR DE PRESENÇA -->
+    <div class="cctv-quadrant-info" id="quadrant-info">
+      
+      <!-- WIDGET RELÓGIO MINIMALISTA (ESTILO CFTV) -->
+      <div class="cctv-clock-widget">
+        <span class="clock-greeting" id="clock-greeting">BOA TARDE</span>
+        <div class="clock-display-frame">
+          <span class="clock-digits" id="live-clock">--:--</span>
         </div>
-        <div class="brand-text">
-          <div class="brand-title-row">
-            <h1 class="brand-title">CERBERUS</h1>
-            <span class="brand-tag">AI SENTINEL</span>
-          </div>
-          <p class="brand-subtitle">Central de Comando Tático & Vigilância Biométrica 2K</p>
-        </div>
+        <span class="clock-date" id="live-date">Carregando data...</span>
+        <span class="cctv-gpu-tag" id="cctv-gpu-tag">GTX 1660 • NVDEC ⚡</span>
       </div>
 
-      <!-- CÁPSULAS DE TELEMETRIA DE HARDWARE -->
-      <div class="header-status">
-        <div class="status-capsule" id="capsule-hardware" title="Aceleração de IA e Decodificação de Vídeo em Hardware">
-          <span class="capsule-dot glow-cyan"></span>
-          <span class="capsule-label">GPU:</span>
-          <span class="capsule-val mono" id="hardware-label">NVIDIA GTX 1660 (Carregando...)</span>
-        </div>
-
-        <div class="status-capsule" id="capsule-cams" title="Status das Câmeras RTSP">
-          <span class="capsule-dot glow-emerald"></span>
-          <span class="capsule-label">Câmeras:</span>
-          <span class="capsule-val mono" id="cams-active-label">3 Ativas (2K 25 FPS)</span>
-        </div>
-
-        <div class="status-capsule capsule-clock">
-          <span class="live-dot-pulse"></span>
-          <span class="live-tag">LIVE</span>
-          <span class="clock-val mono" id="live-clock">--:--:--</span>
-        </div>
-
-        <div class="header-actions">
-          <button class="btn-action-icon" id="btn-toggle-drawer" title="Recolher / Expandir Painel de Alertas" aria-label="Alternar Painel Lateral">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-              <line x1="15" y1="3" x2="15" y2="21"/>
-            </svg>
-          </button>
-
-          <a href="/dashboard" class="btn-dashboard-nav" title="Ir para o Dashboard de Análises & Estatísticas">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="20" x2="18" y2="10"/>
-              <line x1="12" y1="20" x2="12" y2="4"/>
-              <line x1="6" y1="20" x2="6" y2="14"/>
-            </svg>
-            Estatísticas
+      <!-- RADAR DE PRESENÇA EM TEMPO REAL -->
+      <div class="cctv-radar-widget">
+        <div class="radar-header">
+          <div class="radar-title-wrap">
+            <span class="radar-live-beacon"></span>
+            <span class="radar-title">RADAR DE PRESENÇA</span>
+          </div>
+          <a href="/dashboard" class="radar-dash-link" title="Abrir Dashboard Completo de Estatísticas">
+            Dashboard ↗
           </a>
         </div>
-      </div>
-    </header>
 
-    <!-- BARRA DE CONTROLE TÁTICO & SELETORES DE CÂMERA -->
-    <nav class="tactical-controls-bar">
-      <div class="view-selectors-capsule">
-        <span class="view-title">Layout:</span>
-        <button class="view-pill active" id="btn-grid" data-view="grid">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="7" height="7"/>
-            <rect x="14" y="3" width="7" height="7"/>
-            <rect x="3" y="14" width="7" height="7"/>
-            <rect x="14" y="14" width="7" height="7"/>
-          </svg>
-          Grid Mosaico (3 Câmeras)
-        </button>
-
-        <div class="single-selectors-group" id="single-selectors">
-          <!-- Botões dinâmicos de câmeras individuais -->
+        <div class="radar-events-feed" id="radar-events-feed">
+          <div class="radar-empty" id="radar-empty">
+            <span>Perímetro seguro. Nenhuma atividade recente.</span>
+          </div>
         </div>
       </div>
 
-      <div class="tactical-hud-indicators">
-        <div class="indicator-chip" title="Aceleração de IA Nativa Ativa">
-          <span class="chip-status-text">NVDEC + ARC-FACE + TENSORRT</span>
-        </div>
-      </div>
-    </nav>
-
-    <!-- LAYOUT PRINCIPAL (GRID 2K + DRAWER RETRÁTIL) -->
-    <main class="main-command-layout" id="main-layout">
-      
-      <!-- SEÇÃO DO GRID DE CÂMERAS 2K -->
-      <section class="tactical-grid-viewport" id="video-container">
-        <!-- Cards das câmeras com HUD superior e inferior injetados via JS -->
-      </section>
-
-      <!-- DRAWER RETRÁTIL LATERAL (TIMELINE DE EVENTOS) -->
-      <aside class="tactical-drawer" id="events-drawer">
-        <div class="drawer-header">
-          <div class="drawer-title-group">
-            <div class="drawer-icon-radar">
-              <span class="pulse-beacon"></span>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-              </svg>
-            </div>
-            <div>
-              <h2 class="drawer-title">Radar de Presença</h2>
-              <span class="drawer-subtitle">Timeline Inteligente em Tempo Real</span>
-            </div>
-          </div>
-
-          <div class="drawer-actions">
-            <button class="btn-clear-feed" id="btn-clear-screen" title="Limpar eventos da tela (mantém os dados salvos)">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="3 6 5 6 21 6"/>
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-              </svg>
-              Limpar
-            </button>
-            <span class="events-badge mono" id="events-count-badge">0</span>
-          </div>
-        </div>
-
-        <!-- CHIPS DE FILTRO RÁPIDO -->
-        <div class="drawer-filter-chips" id="filter-chips">
-          <button class="filter-chip active" data-filter="all">
-            Todos <span class="chip-count mono" id="count-all">0</span>
-          </button>
-          <button class="filter-chip chip-residents" data-filter="residents">
-            <span class="dot-resident"></span> Moradores <span class="chip-count mono" id="count-residents">0</span>
-          </button>
-          <button class="filter-chip chip-unknowns" data-filter="unknowns">
-            <span class="dot-unknown"></span> Desconhecidos <span class="chip-count mono" id="count-unknowns">0</span>
-          </button>
-          <button class="filter-chip chip-vehicles" data-filter="vehicles">
-            <span class="dot-vehicle"></span> Veículos <span class="chip-count mono" id="count-vehicles">0</span>
-          </button>
-          <button class="filter-chip chip-pets" data-filter="pets">
-            <span class="dot-pet"></span> Pets <span class="chip-count mono" id="count-pets">0</span>
-          </button>
-        </div>
-
-        <!-- LISTA DE CARDS DA TIMELINE -->
-        <div class="events-timeline-list" id="events-list">
-          <div class="events-empty-state" id="events-empty">
-            <div class="empty-radar-circle">
-              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/>
-              </svg>
-            </div>
-            <p>Nenhuma atividade recente.</p>
-            <span>O perímetro está seguro. Detecções em tempo real surgirão aqui.</span>
-          </div>
-        </div>
-      </aside>
-
-    </main>
+    </div>
   </div>
 
-  <!-- MODAL TÁTICO DE INSPEÇÃO DE EVIDÊNCIAS -->
+  <!-- MODAL MINIMALISTA DE INSPEÇÃO DE EVIDÊNCIA -->
   <div class="modal-backdrop" id="event-modal">
     <div class="modal-card">
       <div class="modal-header">
         <div class="modal-title-group">
-          <div class="modal-badge-cam" id="modal-camera-title">Câmera</div>
-          <span class="modal-time mono" id="modal-time">--:--:--</span>
+          <span class="modal-cam-badge" id="modal-camera-title">Câmera</span>
+          <span class="modal-time-badge mono" id="modal-time">--:--:--</span>
         </div>
-        <button class="modal-close-btn" id="modal-close" aria-label="Fechar">✕</button>
+        <button class="modal-close-btn" id="modal-close">✕</button>
       </div>
 
       <div class="modal-body">
-        <div class="modal-media-row">
-          <div class="modal-media-box" id="modal-crop-box">
-            <div class="media-box-header">
-              <span class="media-box-label">Evidência / Recorte Biométrico</span>
-            </div>
-            <div class="media-img-container">
-              <div class="media-loader" id="modal-crop-loader">
-                <div class="spinner"></div>
-              </div>
-              <img id="modal-crop-img" src="" alt="Recorte" class="modal-img-crop">
-            </div>
+        <div class="modal-imgs-row">
+          <div class="modal-img-box">
+            <span class="box-tag">Recorte Biométrico</span>
+            <img id="modal-crop-img" src="" alt="Recorte" class="modal-img">
           </div>
-          <div class="modal-media-box full-box" id="modal-full-box">
-            <div class="media-box-header">
-              <span class="media-box-label">Quadro Geral Nativo 2K com Bounding Box</span>
-              <a id="modal-full-raw-link" href="#" target="_blank" class="media-raw-btn" title="Abrir imagem na resolução máxima original (2304x1296)">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
-                </svg>
-                Resolução 2K Nativa
-              </a>
-            </div>
-            <div class="media-img-container">
-              <div class="media-loader" id="modal-full-loader">
-                <div class="spinner"></div>
-                <span class="loader-text">Carregando quadro geral...</span>
-              </div>
-              <img id="modal-full-img" src="" alt="Cena Completa" class="modal-img-full">
-            </div>
+          <div class="modal-img-box full-box">
+            <span class="box-tag">Quadro 2K com Bounding Box</span>
+            <img id="modal-full-img" src="" alt="Cena Completa" class="modal-img">
           </div>
         </div>
 
-        <div class="modal-meta-grid">
-          <div class="meta-item">
-            <span class="meta-label">ID de Rastreamento</span>
-            <span class="meta-val highlight mono" id="modal-track-id">#--</span>
-          </div>
-          <div class="meta-item">
-            <span class="meta-label">Confiança / Similaridade</span>
-            <span class="meta-val mono" id="modal-confidence">--%</span>
-          </div>
-          <div class="meta-item">
-            <span class="meta-label">Código do Evento</span>
-            <span class="meta-val mono" id="modal-event-id">--</span>
-          </div>
+        <div class="modal-meta-strip">
+          <span class="meta-item">Rastreamento: <b class="mono" id="modal-track-id">#--</b></span>
+          <span class="meta-item">Confiança: <b class="mono" id="modal-confidence">--%</b></span>
+          <span class="meta-item">Evento: <b class="mono" id="modal-event-id">--</b></span>
+          <a id="modal-full-raw-link" href="#" target="_blank" class="meta-link">Baixar Frame Nativo ↗</a>
         </div>
       </div>
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=20261021_cc"></script>
+  <script src="/static/js/app.js?v=20261021_clean"></script>
 </body>
 </html>
