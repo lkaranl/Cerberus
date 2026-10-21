@@ -13,7 +13,7 @@ from app.core.config import settings
 from app.core.logging import logger
 
 # Força transporte TCP, desativação de áudio (-an), e descarte de pacotes corrompidos no OpenCV/FFmpeg
-os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|stimeout;5000000|an;1|fflags;nobuffer+discardcorrupt|max_delay;500000"
+os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|timeout;5000000|an;1|fflags;nobuffer+discardcorrupt|max_delay;500000"
 
 
 class RTSPCapture:
@@ -166,7 +166,7 @@ class RTSPCapture:
                         "-nostdin",
                         "-loglevel", "error",
                         "-rtsp_transport", "tcp",
-                        "-stimeout", "6000000",
+                        "-timeout", "6000000",
                     ]
 
                     if attempt_backend in ("hevc_cuvid", "h264_cuvid"):
@@ -190,7 +190,7 @@ class RTSPCapture:
                     self._proc = subprocess.Popen(
                         cmd,
                         stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
+                        stderr=subprocess.DEVNULL,
                         bufsize=self._frame_bytes * 2
                     )
 
