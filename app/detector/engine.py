@@ -136,6 +136,20 @@ class YOLODetectorEngine:
             xyxy = box.xyxy[0].cpu().numpy().astype(int)
             x1, y1, x2, y2 = xyxy
 
+            # --- Filtros Físicos e Anatômicos Anti-Falsos Positivos (Anti-Pombos / Pássaros) ---
+            box_w = max(1, x2 - x1)
+            box_h = max(1, y2 - y1)
+            box_area = box_w * box_h
+
+            if entity_type == "person":
+                # Um ser humano em pé em câmeras 2K tem no mínimo 65px de altura e 1200px² de área.
+                # Pombos, pássaros, folhas e sombras no chão têm entre 15 e 40px de altura.
+                if box_h < 65 or box_area < 1200:
+                    continue
+                # Descarta objetos largos e baixos (que não são postura humana)
+                if box_w > box_h * 1.5 and box_w < 120:
+                    continue
+
             tracking_id = None
             if box.id is not None:
                 tracking_id = int(box.id[0].item())

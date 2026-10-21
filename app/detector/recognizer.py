@@ -46,9 +46,8 @@ class FaceRecognizer:
             from insightface.app import FaceAnalysis
             logger.info("⚡ Inicializando InsightFace SOTA (ArcFace ResNet / SCRFD 640x640)...")
             
+            # InsightFace opera com máxima estabilidade e performance em CUDA nativo
             providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-            if settings.use_tensorrt:
-                providers = ["TensorrtExecutionProvider", "CUDAExecutionProvider", "CPUExecutionProvider"]
 
             ctx_id = 0 if self.device.startswith("cuda") else -1
             app = None
