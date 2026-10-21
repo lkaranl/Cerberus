@@ -354,7 +354,40 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // --- 11. Conectar Stream de Câmera via WebSocket Binário ---
+  // --- 11. Decodificador Universal de Frames (Resiliente a Safari / WebKit) ---
+  let useImageFallback = false;
+
+  function decodeFrameSource(blob) {
+    const typedBlob = blob.type === "image/jpeg" ? blob : blob.slice(0, blob.size, "image/jpeg");
+
+    if (!useImageFallback && typeof createImageBitmap === "function") {
+      return createImageBitmap(typedBlob).catch(() => {
+        // Fallback automático para Safari / WebKit em caso de restrição de segurança interna
+        useImageFallback = true;
+        return decodeViaImageTag(typedBlob);
+      });
+    }
+
+    return decodeViaImageTag(typedBlob);
+  }
+
+  function decodeViaImageTag(blob) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve(img);
+      };
+      img.onerror = (err) => {
+        URL.revokeObjectURL(url);
+        reject(err);
+      };
+      img.src = url;
+    });
+  }
+
+  // --- 12. Conectar Stream de Câmera via WebSocket Binário ---
   function connectCameraStream(camId) {
     if (state.wsConnections[camId]) {
       try { 
@@ -388,17 +421,24 @@ document.addEventListener("DOMContentLoaded", () => {
       if (document.hidden) return;
 
       try {
-        const imageBitmap = await createImageBitmap(event.data);
-        if (canvas.width !== imageBitmap.width || canvas.height !== imageBitmap.height) {
-          canvas.width = imageBitmap.width;
-          canvas.height = imageBitmap.height;
+        const source = await decodeFrameSource(event.data);
+        const sWidth = source.naturalWidth || source.width;
+        const sHeight = source.naturalHeight || source.height;
+
+        if (canvas.width !== sWidth || canvas.height !== sHeight) {
+          canvas.width = sWidth;
+          canvas.height = sHeight;
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = "high";
           if (placeholder) placeholder.classList.add("hidden");
         }
 
-        ctx.drawImage(imageBitmap, 0, 0, canvas.width, canvas.height);
-        imageBitmap.close();
+        ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+
+        // Se for ImageBitmap, libera o recurso explicitamente
+        if (typeof source.close === "function") {
+          source.close();
+        }
 
         // Solicita próximo frame ao backend de streaming
         if (ws.readyState === WebSocket.OPEN && !document.hidden) {
@@ -422,7 +462,6 @@ document.addEventListener("DOMContentLoaded", () => {
           fpsTimer = now;
         }
       } catch (err) {
-        console.warn(`Erro ao renderizar frame de ${camId}:`, err);
         if (ws.readyState === WebSocket.OPEN && !document.hidden) {
           ws.send("next");
         }
