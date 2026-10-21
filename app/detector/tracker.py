@@ -15,6 +15,7 @@ from app.detector.visual_matcher import visual_matcher
 from app.detector.plate_reader import plate_reader
 from app.detector.person_reid import person_reid
 from app.ai.semantic_search import semantic_search
+from app.core.amd_client import amd_worker_client
 
 def _save_evidence_disk(crop_path: str, crop_img: np.ndarray, full_path: str, annotated_frame: np.ndarray, web_path: str) -> None:
     """Grava as imagens de evidência em disco em thread separada sem bloquear a inferência."""
@@ -30,6 +31,30 @@ def _save_evidence_disk(crop_path: str, crop_img: np.ndarray, full_path: str, an
         cv2.imwrite(web_path, web_frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
     except Exception as err:
         logger.debug(f"Falha ao salvar evidências em disco: {err}")
+
+async def _save_evidence_disk_async(
+    crop_path: str,
+    crop_img: np.ndarray,
+    full_path: str,
+    annotated_frame: np.ndarray,
+    web_path: str,
+    entity_type: str = "person"
+) -> None:
+    """
+    Grava as evidências em disco aplicando super-resolução na GPU AMD RX 5600 XT
+    caso a entidade seja uma pessoa com recorte facial.
+    """
+    try:
+        final_crop = crop_img
+        if entity_type == "person" and crop_img is not None and crop_img.size > 0:
+            # Envia assincronamente para o Worker AMD na porta 8001
+            restored, success = await amd_worker_client.restore_face(crop_img, upscale=2)
+            if success and restored is not None:
+                final_crop = restored
+
+        await asyncio.to_thread(_save_evidence_disk, crop_path, final_crop, full_path, annotated_frame, web_path)
+    except Exception as err:
+        logger.debug(f"Falha ao salvar evidência assíncrona: {err}")
 
 async def _index_semantic_embedding(event_id: str, crop_img: np.ndarray) -> None:
     """Extrai e indexa o embedding multimodal CLIP em background assíncrono sem bloquear o tracking."""
@@ -771,9 +796,9 @@ class CameraTrackerManager:
                         up for up in self.pending_face_upgrades if (now - up["timestamp"]) < 60.0
                     ]
 
-                # Salva recortes de evidência em background assíncrono (zero impacto no frame loop)
+                # Salva recortes de evidência em background assíncrono (com super-resolução na AMD RX 5600 XT)
                 asyncio.create_task(
-                    asyncio.to_thread(_save_evidence_disk, crop_path, crop_img, full_path, annotated_frame.copy(), web_path)
+                    _save_evidence_disk_async(crop_path, crop_img, full_path, annotated_frame.copy(), web_path, track.entity_type)
                 )
 
                 event_record = {
@@ -837,16 +862,16 @@ class CameraTrackerManager:
                 # Recorta o rosto nítido em close
                 face_crop_img = self._extract_person_crop(raw_frame, det["bbox"], face_bbox=track.latest_face_bbox)
 
-                # Sobrescreve as imagens em disco com o momento em que o rosto está de frente
+                # Sobrescreve as imagens em disco com o momento em que o rosto está de frente (com super-resolução na AMD)
                 if track.event_crop_path and track.event_full_path and track.event_web_path:
                     asyncio.create_task(
-                        asyncio.to_thread(
-                            _save_evidence_disk,
+                        _save_evidence_disk_async(
                             track.event_crop_path,
                             face_crop_img,
                             track.event_full_path,
                             annotated_frame.copy(),
-                            track.event_web_path
+                            track.event_web_path,
+                            track.entity_type
                         )
                     )
 
