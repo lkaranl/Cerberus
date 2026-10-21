@@ -151,8 +151,10 @@ def main():
         print(f"  {GREEN}✅ Gateway go2rtc está ATIVO e respondendo na porta 1984!{RESET}")
         print("  Canais WebRTC registrados no go2rtc:")
         for stream_name, stream_info in go2rtc_data.items():
-            producers = stream_info.get("producers", [])
-            consumers = stream_info.get("consumers", [])
+            if not isinstance(stream_info, dict):
+                continue
+            producers = stream_info.get("producers") or []
+            consumers = stream_info.get("consumers") or []
             print(f"    • Stream {BOLD}{stream_name}{RESET}: {len(producers)} fonte(s) ativa(s), {len(consumers)} cliente(s) WebRTC conectado(s)")
     else:
         print(f"  {YELLOW}⚠️ Gateway go2rtc offline ou não respondeu: {go2rtc_data}{RESET}")
