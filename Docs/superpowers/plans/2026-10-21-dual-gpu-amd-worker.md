@@ -50,11 +50,11 @@ scripts/
 **Interfaces:**
 - Produz: Relatório impresso detalhando se Vulkan e ROCm estão ativos na GPU AMD, memória VRAM livre e taxa de TFLOPs medida.
 
-- [ ] **Passo 1.1: Criar o script de diagnóstico de hardware `scripts/benchmark_dual_gpu.py`**
+- [x] **Passo 1.1: Criar o script de diagnóstico de hardware `scripts/benchmark_dual_gpu.py`**
   - Detectar a presença do dispositivo Vulkan (AMD RADV Navi 10) e checar suporte a ROCm.
   - Executar multiplicação densa de matrizes (GEMM FP16/FP32) para medir o tempo de resposta em ms.
-- [ ] **Passo 1.2: Adicionar validação de fallback caso apenas a NVIDIA esteja disponível no ambiente de teste.**
-- [ ] **Passo 1.3: Commit:** `git commit -m "test: adicionar script de benchmark e deteccao de hardware dual gpu"`
+- [x] **Passo 1.2: Adicionar validação de fallback caso apenas a NVIDIA esteja disponível no ambiente de teste.**
+- [x] **Passo 1.3: Commit:** `git commit -m "test: adicionar script de benchmark e deteccao de hardware dual gpu"`
 
 ---
 
