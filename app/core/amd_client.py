@@ -51,9 +51,9 @@ class AmdWorkerClient:
         import httpx
 
         # --- 1. Tentativa de Alta Performance: Zero-Copy via Shared Memory ---
-        shm_obj = None
+        shm_path = None
         try:
-            shm_in_name, shape, dtype_str, shm_obj = write_numpy_to_shm(face_bgr, prefix="cerb_in")
+            shm_in_name, shape, dtype_str, shm_path = write_numpy_to_shm(face_bgr, prefix="cerb_in")
             payload = {
                 "shm_in_name": shm_in_name,
                 "shape": shape,
@@ -74,11 +74,9 @@ class AmdWorkerClient:
                             return restored_bgr, True
         except Exception as err_shm:
             logger.debug(f"Transporte SHM indisponível, recorrendo a Base64: {err_shm}")
-        finally:
-            if shm_obj is not None:
+            if shm_path and os.path.exists(shm_path):
                 try:
-                    shm_obj.close()
-                    shm_obj.unlink()
+                    os.unlink(shm_path)
                 except Exception:
                     pass
 

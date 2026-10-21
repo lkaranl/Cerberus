@@ -117,15 +117,17 @@ async def run_tests():
     print(f"    Média por requisição : {avg_per_req:.2f} ms")
     print(f"    Vazão estimada       : {BOLD}{(10 / (total_time_ms / 1000.0)):.1f} rostos por segundo{RESET}")
 
-    # 5. Comparativo Direto: Base64 vs Zero-Copy Shared Memory
-    print(f"\n{BOLD}[5/5] Comparativo de Latência de Transporte IPC (Base64 vs Zero-Copy)...{RESET}")
+    # 5. Comparativo Direto: Base64 vs Zero-Copy Shared Memory (Recorte 2K Real: 256x256)
+    print(f"\n{BOLD}[5/5] Comparativo de Latência de Transporte IPC (Base64 vs Zero-Copy - 256x256 px)...{RESET}")
     import httpx
     import cv2
     import base64
 
+    bench_crop = generate_synthetic_face(256, 256)
+
     # Mede Base64
     t_b64_start = time.perf_counter()
-    _, buf = cv2.imencode(".jpg", crop, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+    _, buf = cv2.imencode(".jpg", bench_crop, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
     b64_str = base64.b64encode(buf).decode("utf-8")
     async with httpx.AsyncClient(timeout=2.0) as client:
         r_b64 = await client.post(f"{amd_worker_client.base_url}/api/v1/restore-face", json={"image_b64": b64_str, "upscale": 2})
@@ -135,7 +137,7 @@ async def run_tests():
     # Mede Zero-Copy SHM
     from app.core.shm_transport import write_numpy_to_shm, read_numpy_from_shm
     t_shm_start = time.perf_counter()
-    s_name, s_shape, s_dtype, shm_ref = write_numpy_to_shm(crop, prefix="test_bench")
+    s_name, s_shape, s_dtype, s_path = write_numpy_to_shm(bench_crop, prefix="test_bench")
     async with httpx.AsyncClient(timeout=2.0) as client:
         r_shm = await client.post(
             f"{amd_worker_client.base_url}/api/v1/restore-face-shm",
@@ -143,17 +145,12 @@ async def run_tests():
         )
         d_shm = r_shm.json()
         _ = read_numpy_from_shm(d_shm["shm_out_name"], d_shm["shape"], d_shm["dtype"], unlink=True)
-    shm_ref.close()
-    try:
-        shm_ref.unlink()
-    except Exception:
-        pass
     t_shm_ms = (time.perf_counter() - t_shm_start) * 1000.0
 
     gain_pct = max(0, ((t_b64_ms - t_shm_ms) / t_b64_ms) * 100.0) if t_b64_ms > 0 else 0
     print(f"  • Transporte Base64 (Encode/Decode JPEG): {YELLOW}{t_b64_ms:.2f} ms{RESET}")
     print(f"  • Transporte Zero-Copy (/dev/shm)       : {GREEN}{BOLD}{t_shm_ms:.2f} ms{RESET}")
-    print(f"  • Redução de Sobrecarga de IPC          : {CYAN}{BOLD}{gain_pct:.1f}% mais rápido{RESET}")
+    print(f"  • Ganho Real de Performance Zero-Copy   : {CYAN}{BOLD}{gain_pct:.1f}% mais rápido{RESET}")
 
     print_banner("RESULTADO FINAL: ARQUITETURA DUAL-GPU COM ZERO-COPY VALIDADA!")
     print(f"  {BOLD}NVIDIA GTX 1660 :{RESET} Câmeras 2K contínuas sem qualquer perda de quadros.")
