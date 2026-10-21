@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     face_confidence_threshold: float = Field(default=0.58, alias="FACE_CONFIDENCE_THRESHOLD")
     face_instant_threshold: float = Field(default=0.68, alias="FACE_INSTANT_THRESHOLD")
     face_min_size: int = Field(default=48, alias="FACE_MIN_SIZE")
-    face_quality_min_blur: float = Field(default=55.0, alias="FACE_QUALITY_MIN_BLUR")
+    face_quality_min_blur: float = Field(default=18.0, alias="FACE_QUALITY_MIN_BLUR")
     face_temporal_votes: int = Field(default=3, alias="FACE_TEMPORAL_VOTES")
 
     # Aceleração Máxima TensorRT (NVIDIA CUDA)

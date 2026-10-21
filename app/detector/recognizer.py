@@ -225,15 +225,32 @@ class FaceRecognizer:
             try:
                 faces = self.insight_app.get(img_bgr)
                 # Se não detectou faces na imagem original (típico de recortes muito fechados sem contexto de ombros),
-                # adiciona borda reflexiva (padding de 25%) para dar contexto ao detector SCRFD
+                # adiciona borda reflexiva progressiva e tenta ângulos de rotação (TTA) para selfies inclinadas
                 if not faces or len(faces) == 0:
                     h, w = img_bgr.shape[:2]
-                    pad_y = max(32, int(h * 0.25))
-                    pad_x = max(32, int(w * 0.25))
-                    padded_bgr = cv2.copyMakeBorder(
-                        img_bgr, pad_y, pad_y, pad_x, pad_x, cv2.BORDER_REFLECT_101
-                    )
-                    faces = self.insight_app.get(padded_bgr)
+                    for pad_factor in [0.25, 0.45]:
+                        pad_y = max(32, int(h * pad_factor))
+                        pad_x = max(32, int(w * pad_factor))
+                        padded_bgr = cv2.copyMakeBorder(
+                            img_bgr, pad_y, pad_y, pad_x, pad_x, cv2.BORDER_REFLECT_101
+                        )
+                        faces = self.insight_app.get(padded_bgr)
+                        if faces and len(faces) > 0:
+                            break
+
+                        # Tenta compensar inclinação da cabeça (roll de selfies)
+                        center = (padded_bgr.shape[1] // 2, padded_bgr.shape[0] // 2)
+                        for angle in [-20.0, 20.0, -12.0, 12.0, -30.0, 30.0]:
+                            rot_mat = cv2.getRotationMatrix2D(center, angle, 1.0)
+                            rotated = cv2.warpAffine(
+                                padded_bgr, rot_mat, (padded_bgr.shape[1], padded_bgr.shape[0]),
+                                borderMode=cv2.BORDER_REFLECT_101
+                            )
+                            faces = self.insight_app.get(rotated)
+                            if faces and len(faces) > 0:
+                                break
+                        if faces and len(faces) > 0:
+                            break
 
                 if faces and len(faces) > 0:
                     best_face = max(faces, key=lambda f: getattr(f, "det_score", 0.0))

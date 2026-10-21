@@ -118,21 +118,38 @@ def main():
 
             h, w = img_bgr.shape[:2]
 
-            # Detecção de faces via InsightFace (com padding de contexto se necessário)
+            # Detecção de faces via InsightFace (com padding de contexto e compensação de roll)
             try:
                 faces = face_recognizer.app.get(img_bgr) if face_recognizer.app else []
                 is_padded = False
                 pad_y = 0
                 pad_x = 0
                 if not faces or len(faces) == 0:
-                    pad_y = max(32, int(h * 0.25))
-                    pad_x = max(32, int(w * 0.25))
-                    padded_bgr = cv2.copyMakeBorder(
-                        img_bgr, pad_y, pad_y, pad_x, pad_x, cv2.BORDER_REFLECT_101
-                    )
-                    faces = face_recognizer.app.get(padded_bgr) if face_recognizer.app else []
-                    if faces and len(faces) > 0:
-                        is_padded = True
+                    for pad_factor in [0.25, 0.45]:
+                        pad_y = max(32, int(h * pad_factor))
+                        pad_x = max(32, int(w * pad_factor))
+                        padded_bgr = cv2.copyMakeBorder(
+                            img_bgr, pad_y, pad_y, pad_x, pad_x, cv2.BORDER_REFLECT_101
+                        )
+                        faces = face_recognizer.app.get(padded_bgr) if face_recognizer.app else []
+                        if faces and len(faces) > 0:
+                            is_padded = True
+                            break
+
+                        # Tenta compensar inclinação da cabeça (roll de selfies)
+                        center = (padded_bgr.shape[1] // 2, padded_bgr.shape[0] // 2)
+                        for angle in [-20.0, 20.0, -12.0, 12.0, -30.0, 30.0]:
+                            rot_mat = cv2.getRotationMatrix2D(center, angle, 1.0)
+                            rotated = cv2.warpAffine(
+                                padded_bgr, rot_mat, (padded_bgr.shape[1], padded_bgr.shape[0]),
+                                borderMode=cv2.BORDER_REFLECT_101
+                            )
+                            faces = face_recognizer.app.get(rotated) if face_recognizer.app else []
+                            if faces and len(faces) > 0:
+                                is_padded = True
+                                break
+                        if faces and len(faces) > 0:
+                            break
             except Exception as e:
                 print(f"   ❌ [{img_path.name}] Erro na inferência InsightFace: {e}")
                 total_rejected += 1
