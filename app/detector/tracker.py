@@ -60,6 +60,13 @@ class TrackedEntity:
         self.match_confidence: float = 0.0
         self.license_plate: str = ""
         self.eval_count: int = 0
+        self.needs_identity_upgrade: bool = False
+
+        # Consenso Temporal Biométrico SOTA
+        self.face_evidence_history: List[Tuple[str, float]] = []  # (nome, score)
+        self.is_face_confirmed: bool = False
+        self.consecutive_unknown_count: int = 0
+        self.uncertainty_grace_frames: int = 0  # Janela de carência para rostos na faixa 0.48-0.57
 
         # Rastreamento Facial & Gestão Inteligente de Evidências
         self.has_face_captured: bool = False
@@ -76,6 +83,56 @@ class TrackedEntity:
         self.is_stationary: bool = False
         self.stationary_anchor_pos: Optional[Tuple[float, float]] = None
         self.stationary_since: Optional[float] = None
+
+    def register_face_evidence(self, name: str, score: float, is_known: bool) -> Tuple[bool, str, float]:
+        """
+        Consenso Temporal Biométrico SOTA:
+        - Confirmação Instantânea (Zero Latência): score >= settings.face_instant_threshold (ex: 0.68).
+        - Confirmação por Voto Temporal: score >= settings.face_confidence_threshold (ex: 0.58) acumulado
+          por settings.face_temporal_votes (3) frames de detecção de alta qualidade do mesmo indivíduo.
+        - Zona de Incerteza (0.48 <= score < 0.58): concede carência de frames antes de marcar como desconhecido.
+        """
+        if self.is_face_confirmed:
+            if is_known and name == self.identity_name:
+                self.match_confidence = max(self.match_confidence, score)
+            return True, self.identity_name, self.match_confidence
+
+        if is_known:
+            # 1. Via Rápida Instantânea (alta convicção matemática)
+            if score >= settings.face_instant_threshold:
+                self.is_known = True
+                self.is_face_confirmed = True
+                self.identity_name = name
+                self.match_confidence = score
+                self.uncertainty_grace_frames = 0
+                return True, name, score
+
+            # 2. Acúmulo de Votos Temporais
+            self.face_evidence_history.append((name, score))
+            if len(self.face_evidence_history) > 10:
+                self.face_evidence_history.pop(0)
+
+            valid_votes = [
+                s for n, s in self.face_evidence_history
+                if n == name and s >= settings.face_confidence_threshold
+            ]
+
+            if len(valid_votes) >= settings.face_temporal_votes:
+                self.is_known = True
+                self.is_face_confirmed = True
+                self.identity_name = name
+                self.match_confidence = max(valid_votes)
+                self.uncertainty_grace_frames = 0
+                return True, name, self.match_confidence
+            else:
+                return False, name, score
+        else:
+            self.consecutive_unknown_count += 1
+            if score >= 0.48:
+                self.uncertainty_grace_frames += 1
+            else:
+                self.uncertainty_grace_frames = 0
+            return False, f"{self.class_label} Desconhecido", score
 
     def update(self, confidence: float, bbox: Tuple[int, int, int, int]) -> None:
         now = time.time()
@@ -490,18 +547,18 @@ class CameraTrackerManager:
                                 f"(substituindo recorte de nuca por foto do rosto) em {self.camera_name}"
                             )
 
-                    if is_known:
-                        was_unknown = not track.is_known
+                    # [SOTA] Avaliação com Consenso Temporal e Proteção Anti-Falso Positivo
+                    is_confirmed, confirmed_name, best_score = track.register_face_evidence(name, face_conf, is_known)
+
+                    if is_confirmed:
                         had_alerted_unknown = track.event_triggered and "Desconhecido" in track.identity_name
-                        track.identity_name = name
-                        track.is_known = True
-                        track.match_confidence = face_conf
-                        logger.info(f"👤 Rosto identificado em {self.camera_name}: {name} ({int(face_conf * 100)}%)")
+                        logger.info(f"👤 Rosto confirmado via consenso biométrico em {self.camera_name}: {confirmed_name} ({int(best_score * 100)}%)")
                         if had_alerted_unknown and track.active_event_id:
                             track.needs_face_upgrade = True
+                            track.needs_identity_upgrade = True
 
                         # [FASE 2 SOTA] Registra/atualiza a assinatura biométrica corporal no pool de Re-ID
-                        person_reid.register_resident_sighting(name, crop_obj, self.camera_name)
+                        person_reid.register_resident_sighting(confirmed_name, crop_obj, self.camera_name)
 
                     elif not track.is_known:
                         # [FASE 2 SOTA] Se o rosto não estiver visível (de costas, de capuz, boné ou distante),
@@ -639,6 +696,11 @@ class CameraTrackerManager:
 
             # Caso 1: Novo Alerta Inicial
             if is_stable and not track.event_triggered:
+                # Proteção contra Falso Positivo: se for pessoa com traços faciais na zona de dúvida (0.48-0.57),
+                # concede até 5 frames de carência antes de disparar alerta de invasor desconhecido
+                if track.entity_type == "person" and not track.is_known and 0 < track.uncertainty_grace_frames <= 5:
+                    continue
+
                 track.event_triggered = True
                 track.needs_face_upgrade = False
                 if track.is_stationary:

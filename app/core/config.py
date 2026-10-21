@@ -46,6 +46,14 @@ class Settings(BaseSettings):
     vehicle_similarity_threshold: float = Field(default=0.82, alias="VEHICLE_SIMILARITY_THRESHOLD")
     pet_similarity_threshold: float = Field(default=0.78, alias="PET_SIMILARITY_THRESHOLD")
 
+    # Parâmetros SOTA de Reconhecimento Facial (InsightFace ArcFace / SCRFD)
+    face_model_name: str = Field(default="buffalo_l", alias="FACE_MODEL_NAME")
+    face_confidence_threshold: float = Field(default=0.58, alias="FACE_CONFIDENCE_THRESHOLD")
+    face_instant_threshold: float = Field(default=0.68, alias="FACE_INSTANT_THRESHOLD")
+    face_min_size: int = Field(default=48, alias="FACE_MIN_SIZE")
+    face_quality_min_blur: float = Field(default=55.0, alias="FACE_QUALITY_MIN_BLUR")
+    face_temporal_votes: int = Field(default=3, alias="FACE_TEMPORAL_VOTES")
+
     # Aceleração Máxima TensorRT (NVIDIA CUDA)
     use_tensorrt: bool = Field(default=True, alias="USE_TENSORRT")
     engine_path: str = Field(default="models/yolo11n.engine", alias="ENGINE_PATH")
