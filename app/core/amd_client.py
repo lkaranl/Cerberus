@@ -12,6 +12,8 @@ import numpy as np
 
 logger = logging.getLogger("cerberus.amd_client")
 
+from app.core.shm_transport import write_numpy_to_shm, read_numpy_from_shm
+
 class AmdWorkerClient:
     """
     Cliente HTTP ultraleve assíncrono para consumir o Worker da AMD na porta 8001.
@@ -39,17 +41,50 @@ class AmdWorkerClient:
     async def restore_face(self, face_bgr: np.ndarray, upscale: int = 2) -> Tuple[np.ndarray, bool]:
         """
         Envia o corte facial para super-resolução na AMD RX 5600 XT.
-        Retorna (imagem_restaurada, sucesso_no_worker_amd).
+        Prioridade 1: Transporte Zero-Copy ultra-rápido via POSIX Shared Memory (/dev/shm).
+        Prioridade 2: Fallback transparente via Base64 clássico.
         Em caso de timeout ou falha de rede, devolve a imagem original intacta.
         """
         if face_bgr is None or face_bgr.size == 0:
             return face_bgr, False
 
+        import httpx
+
+        # --- 1. Tentativa de Alta Performance: Zero-Copy via Shared Memory ---
+        shm_obj = None
+        try:
+            shm_in_name, shape, dtype_str, shm_obj = write_numpy_to_shm(face_bgr, prefix="cerb_in")
+            payload = {
+                "shm_in_name": shm_in_name,
+                "shape": shape,
+                "dtype": dtype_str,
+                "upscale": upscale
+            }
+
+            async with httpx.AsyncClient(timeout=self.timeout_sec) as client:
+                resp = await client.post(f"{self.base_url}/api/v1/restore-face-shm", json=payload)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    out_name = data.get("shm_out_name")
+                    out_shape = data.get("shape")
+                    out_dtype = data.get("dtype")
+                    if out_name and out_shape:
+                        restored_bgr = read_numpy_from_shm(out_name, out_shape, out_dtype, unlink=True)
+                        if restored_bgr is not None:
+                            return restored_bgr, True
+        except Exception as err_shm:
+            logger.debug(f"Transporte SHM indisponível, recorrendo a Base64: {err_shm}")
+        finally:
+            if shm_obj is not None:
+                try:
+                    shm_obj.close()
+                    shm_obj.unlink()
+                except Exception:
+                    pass
+
+        # --- 2. Fallback de Compatibilidade: Base64 HTTP ---
         try:
             import cv2
-            import httpx
-
-            # Codifica recorte em JPEG base64
             _, buffer = cv2.imencode(".jpg", face_bgr, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
             b64_payload = base64.b64encode(buffer).decode("utf-8")
 
@@ -71,7 +106,6 @@ class AmdWorkerClient:
                             return restored_bgr, True
 
         except Exception as e:
-            # Fallback transparente sem interromper fluxo de detecção
             logger.debug(f"Worker AMD não disponível ou timeout ({e}), utilizando corte original.")
 
         return face_bgr, False
