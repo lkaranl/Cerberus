@@ -90,40 +90,97 @@ def main():
         print(f"  • Pesos Base     : {GREEN}Localizados em {base_pt}{RESET}")
         model = YOLO(str(base_pt))
 
-    # 3. Compilação da Engine TensorRT em HD 16:9 Nativo (736x1280 FP16)
+    # 3. Exportação para ONNX HD 16:9 Nativo (736x1280)
     target_h, target_w = 736, 1280
-    print_banner(f"COMPILANDO ENGINE TENSORRT HD 16:9 ({target_h}x{target_w} FP16)")
-    print(f"  Configuração de Exportação:")
-    print(f"  • Resolução      : {BOLD}{target_h} x {target_w} px (Proporção 16:9 Nativa){RESET}")
-    print(f"  • Precisão       : {BOLD}FP16 (Meia-precisão acelerada por hardware){RESET}")
-    print(f"  • Espaço Workspace: {BOLD}4.0 GB (Otimização máxima de kernels){RESET}")
-    print(f"  • Dispositivo    : {BOLD}GPU 0 (GTX 1660 Turing){RESET}\n")
-    print(f"  ⏳ Compilando rede neural no silício da placa (isso leva de 1 a 3 minutos)...")
+    onnx_hd = models_dir / "yolo11n_hd.onnx"
+    print_banner(f"GERANDO ONNX E COMPILANDO COM TENSORRT NATIVO ({target_h}x{target_w} FP16)")
 
-    t0_comp = time.time()
-    try:
-        # Exporta diretamente via pipeline TensorRT do Ultralytics com FP16 e resolução 16:9
-        exported_path = model.export(
-            format="engine",
-            half=True,
-            device=0,
+    if not onnx_hd.exists():
+        print(f"⚙️  Exportando pesos base para ONNX HD ({target_h}x{target_w}, opset=17)...")
+        exported_onnx = model.export(
+            format="onnx",
             imgsz=(target_h, target_w),
-            workspace=4,
+            opset=17,
+            dynamic=False,
             verbose=False
         )
-
-        exported_p = Path(exported_path)
-        if exported_p != engine_hd and exported_p.exists():
+        if Path(exported_onnx) != onnx_hd and Path(exported_onnx).exists():
             import shutil
-            shutil.move(str(exported_p), str(engine_hd))
+            shutil.move(str(exported_onnx), str(onnx_hd))
+        print(f"  {GREEN}✔ Grafo ONNX HD gerado com sucesso: {onnx_hd}{RESET}\n")
+    else:
+        print(f"  • Grafo ONNX HD existente: {BOLD}{onnx_hd}{RESET}\n")
+
+    # 4. Compilação Direta via API C++/Python do NVIDIA TensorRT (Zero dependências extras)
+    print("🔨 Compilando Engine TensorRT FP16 nativa no silício da GTX 1660...")
+    print("   Otimizando kernels CUDA Turing (dispensa pacotes externos como modelopt)...")
+    t0_comp = time.time()
+
+    compiled_ok = False
+    try:
+        import tensorrt as trt
+        logger_trt = trt.Logger(trt.Logger.WARNING)
+        builder = trt.Builder(logger_trt)
+
+        if hasattr(trt, "NetworkDefinitionCreationFlag") and hasattr(trt.NetworkDefinitionCreationFlag, "EXPLICIT_BATCH"):
+            network = builder.create_network(1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))
+        else:
+            network = builder.create_network()
+
+        parser = trt.OnnxParser(network, logger_trt)
+        with open(onnx_hd, "rb") as f:
+            if not parser.parse(f.read()):
+                for error in range(parser.num_errors):
+                    print("Erro do parser TRT:", parser.get_error(error))
+                raise RuntimeError("Falha ao analisar o grafo ONNX HD com TensorRT.")
+
+        config = builder.create_builder_config()
+        if hasattr(config, "set_memory_pool_limit") and hasattr(trt, "MemoryPoolType"):
+            config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, 4 * 1024 * 1024 * 1024)
+        elif hasattr(config, "max_workspace_size"):
+            config.max_workspace_size = 4 * 1024 * 1024 * 1024
+
+        if hasattr(trt.BuilderFlag, "FP16"):
+            config.set_flag(trt.BuilderFlag.FP16)
+            print("  • Modo FP16 ativado para os núcleos Turing da GTX 1660.")
+
+        print("  ⏳ Calibrando rede neural e gerando bytecode serializado...")
+        if hasattr(builder, "build_serialized_network"):
+            serialized_engine = builder.build_serialized_network(network, config)
+        else:
+            engine = builder.build_cuda_engine(network)
+            serialized_engine = engine.serialize()
+
+        if serialized_engine is None:
+            raise RuntimeError("O construtor do TensorRT retornou None.")
+
+        with open(engine_hd, "wb") as f:
+            f.write(serialized_engine)
 
         duration_sec = time.time() - t0_comp
         print(f"\n{GREEN}{BOLD}✔ Engine TensorRT HD compilada com sucesso em {duration_sec:.1f}s!{RESET}")
         print(f"  Arquivo salvo em: {BOLD}{engine_hd}{RESET}")
+        compiled_ok = True
 
     except Exception as err:
-        print(f"\n{RED}❌ Falha na compilação do TensorRT: {err}{RESET}")
-        sys.exit(1)
+        print(f"⚠️ Aviso na compilação direta via Python TRT: {err}")
+        print("Tentando compilação via binário oficial da NVIDIA (trtexec)...")
+        import subprocess
+        try:
+            cmd = [
+                "trtexec",
+                f"--onnx={onnx_hd}",
+                f"--saveEngine={engine_hd}",
+                "--fp16",
+                "--workspace=4096"
+            ]
+            res = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            duration_sec = time.time() - t0_comp
+            print(f"\n{GREEN}{BOLD}✔ Engine TensorRT HD compilada via trtexec em {duration_sec:.1f}s!{RESET}")
+            compiled_ok = True
+        except Exception as trt_exec_err:
+            print(f"{RED}❌ Falha fatal ao compilar TensorRT: {trt_exec_err}{RESET}")
+            sys.exit(1)
 
     # 4. Benchmark de Comparação com Frame 2K Real
     print_banner("BENCHMARK DE PERFORMANCE: SIMULAÇÃO COM FRAME 2K (2304x1296)")
