@@ -40,7 +40,7 @@ document.addEventListener("DOMContentLoaded", () => {
     modalEventId: document.getElementById("modal-event-id")
   };
 
-  // --- 1. Relógio Estilo CFTV ---
+  // --- 1. Relógio Estilo CFTV Minimalista ---
   function startClock() {
     const meses = [
       "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -74,36 +74,44 @@ document.addEventListener("DOMContentLoaded", () => {
                    (navigator.userAgent.includes("AppleWebKit") && !navigator.userAgent.includes("Chrome"));
   let useImageFallback = isWebKit;
 
-  function decodeFrameSource(blob) {
+  const camImagePool = {};
+
+  function decodeFrameSource(camId, blob) {
     const typedBlob = blob.type === "image/jpeg" ? blob : blob.slice(0, blob.size, "image/jpeg");
 
     if (!useImageFallback && typeof createImageBitmap === "function") {
       return createImageBitmap(typedBlob).catch(() => {
         useImageFallback = true;
-        return decodeViaImageTag(typedBlob);
+        return decodeViaImageTag(camId, typedBlob);
       });
     }
 
-    return decodeViaImageTag(typedBlob);
+    return decodeViaImageTag(camId, typedBlob);
   }
 
-  function decodeViaImageTag(blob) {
+  function decodeViaImageTag(camId, blob) {
     return new Promise((resolve, reject) => {
       const url = URL.createObjectURL(blob);
-      const img = new Image();
+      if (!camImagePool[camId]) {
+        camImagePool[camId] = new Image();
+      }
+      const img = camImagePool[camId];
+
       img.onload = () => {
         URL.revokeObjectURL(url);
         resolve(img);
       };
-      img.onerror = (err) => {
+
+      img.onerror = () => {
         URL.revokeObjectURL(url);
-        reject(err);
+        reject();
       };
+
       img.src = url;
     });
   }
 
-  // --- 3. Inicialização ---
+  // --- 3. Inicialização Geral ---
   async function init() {
     startClock();
     setupModalEvents();
@@ -157,7 +165,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const existingSlots = dom.gridContainer.querySelectorAll(".cctv-cam-slot");
     existingSlots.forEach(slot => slot.remove());
 
-    state.cameras.forEach((cam, idx) => {
+    state.cameras.forEach((cam) => {
       const slot = document.createElement("div");
       slot.className = "cctv-cam-slot";
       slot.id = `slot-${cam.id}`;
@@ -173,7 +181,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         <div class="cctv-top-pill ${cam.connected ? '' : 'offline'}" id="top-pill-${cam.id}">
           <span class="cctv-pill-dot"></span>
-          <span id="fps-val-${cam.id}">25 FPS</span>
+          <span id="fps-val-${cam.id}">-- FPS</span>
         </div>
 
         <div class="cctv-bottom-name">${cam.name}</div>
@@ -188,23 +196,20 @@ document.addEventListener("DOMContentLoaded", () => {
         </button>
       `;
 
-      // Insere antes do quadrant-info para manter as 3 câmeras nos slots 1, 2 e 3
+      // Insere antes do quadrant-info para manter os 3 slots no topo e à esquerda
       dom.gridContainer.insertBefore(slot, dom.quadrantInfo);
 
-      // Botão de Fullscreen individual
       const fsBtn = slot.querySelector(`#fs-btn-${cam.id}`);
       if (fsBtn) {
         fsBtn.addEventListener("click", () => toggleSlotFullscreen(slot));
       }
 
-      // Duplo clique no vídeo também expande
       slot.addEventListener("dblclick", () => toggleSlotFullscreen(slot));
     });
   }
 
   function toggleSlotFullscreen(slotElement) {
     const isFull = slotElement.classList.contains("fullscreen-active");
-    // Remove de todos antes
     document.querySelectorAll(".cctv-cam-slot").forEach(s => s.classList.remove("fullscreen-active"));
 
     if (!isFull) {
@@ -212,7 +217,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Tecla Escape para sair da tela cheia
   window.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       document.querySelectorAll(".cctv-cam-slot").forEach(s => s.classList.remove("fullscreen-active"));
@@ -220,12 +224,17 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // --- 6. Conectar Stream via WebSocket Binário ---
+  // --- 6. Conectar Stream via WebSocket Binário com Pacing e Watchdog ---
   function connectCameraStream(camId) {
-    if (state.wsConnections[camId]) {
+    const existingWs = state.wsConnections[camId];
+    if (existingWs) {
+      // Se já estiver conectado ou em handshake, não fecha para evitar loop
+      if (existingWs.readyState === WebSocket.OPEN || existingWs.readyState === WebSocket.CONNECTING) {
+        return;
+      }
       try {
-        state.wsConnections[camId].onclose = null;
-        state.wsConnections[camId].close();
+        existingWs.onclose = null;
+        existingWs.close();
       } catch (e) {}
     }
 
@@ -240,6 +249,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
     let frameCount = 0;
     let fpsTimer = performance.now();
+    let lastFrameTime = performance.now();
+
+    // Watchdog: se não receber frame em 800ms, manda "next" para reativar o pipeline
+    const watchdog = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN && !document.hidden) {
+        if (performance.now() - lastFrameTime > 800) {
+          ws.send("next");
+        }
+      }
+    }, 400);
 
     ws.onopen = () => {
       if (ws.readyState === WebSocket.OPEN) {
@@ -248,11 +267,13 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     ws.onmessage = async (event) => {
-      if (!ctx || !(event.data instanceof Blob)) return;
+      if (!ctx || !(event.data instanceof Blob) || event.data.size === 0) return;
       if (document.hidden) return;
 
+      lastFrameTime = performance.now();
+
       try {
-        const source = await decodeFrameSource(event.data);
+        const source = await decodeFrameSource(camId, event.data);
         const sWidth = source.naturalWidth || source.width;
         const sHeight = source.naturalHeight || source.height;
 
@@ -270,6 +291,7 @@ document.addEventListener("DOMContentLoaded", () => {
           source.close();
         }
 
+        // Sinaliza ao servidor que o frame foi renderizado e solicita o próximo
         if (ws.readyState === WebSocket.OPEN && !document.hidden) {
           ws.send("next");
         }
@@ -277,7 +299,7 @@ document.addEventListener("DOMContentLoaded", () => {
         frameCount++;
         const now = performance.now();
         if (now - fpsTimer >= 1000) {
-          const fps = (frameCount / ((now - fpsTimer) / 1000)).toFixed(0);
+          const fps = Math.round(frameCount / ((now - fpsTimer) / 1000));
           const fpsEl = document.getElementById(`fps-val-${camId}`);
           if (fpsEl) fpsEl.textContent = `${fps} FPS`;
 
@@ -295,6 +317,7 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     ws.onclose = () => {
+      clearInterval(watchdog);
       if (!document.hidden && state.cameras.some(c => c.id === camId)) {
         const pill = document.getElementById(`top-pill-${camId}`);
         if (pill) pill.classList.add("offline");
