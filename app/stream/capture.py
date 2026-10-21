@@ -154,7 +154,8 @@ class RTSPCapture:
 
         if can_use_nvdec:
             # Tenta inicializar decodificação por hardware NVDEC na GTX 1660
-            for attempt_backend in ["cuda", "hevc_cuvid"]:
+            # Prioriza hevc_cuvid (nativo das câmeras 2K) e h264_cuvid
+            for attempt_backend in ["hevc_cuvid", "h264_cuvid", "cuda"]:
                 try:
                     res_w, res_h = self._probe_resolution()
                     self.resolution = (res_w, res_h)
@@ -166,24 +167,17 @@ class RTSPCapture:
                         "-loglevel", "error",
                         "-rtsp_transport", "tcp",
                         "-stimeout", "6000000",
-                        "-max_delay", "500000",
-                        "-reorder_queue_size", "0",
-                        "-an",  # Desativa áudio completamente na fonte para zero overhead
-                        "-flags", "low_delay",
-                        "-fflags", "+discardcorrupt+nobuffer",
-                        "-analyzeduration", "1000000",
-                        "-probesize", "1000000",
                     ]
 
-                    if attempt_backend == "cuda":
+                    if attempt_backend in ("hevc_cuvid", "h264_cuvid"):
+                        cmd.extend([
+                            "-c:v", attempt_backend,
+                            "-gpu", str(settings.nvdec_device),
+                        ])
+                    elif attempt_backend == "cuda":
                         cmd.extend([
                             "-hwaccel", "cuda",
                             "-hwaccel_device", str(settings.nvdec_device),
-                        ])
-                    elif attempt_backend == "hevc_cuvid":
-                        cmd.extend([
-                            "-c:v", "hevc_cuvid",
-                            "-gpu", str(settings.nvdec_device),
                         ])
 
                     cmd.extend([
@@ -196,7 +190,7 @@ class RTSPCapture:
                     self._proc = subprocess.Popen(
                         cmd,
                         stdout=subprocess.PIPE,
-                        stderr=subprocess.DEVNULL,
+                        stderr=subprocess.PIPE,
                         bufsize=self._frame_bytes * 2
                     )
 
@@ -253,6 +247,11 @@ class RTSPCapture:
                 if self._proc.stdout is not None:
                     try:
                         self._proc.stdout.close()
+                    except Exception:
+                        pass
+                if self._proc.stderr is not None:
+                    try:
+                        self._proc.stderr.close()
                     except Exception:
                         pass
                 self._proc.kill()
