@@ -54,6 +54,13 @@ class Settings(BaseSettings):
     face_quality_min_blur: float = Field(default=18.0, alias="FACE_QUALITY_MIN_BLUR")
     face_temporal_votes: int = Field(default=3, alias="FACE_TEMPORAL_VOTES")
 
+    # Módulo de Restauração e Super-Resolução Facial SOTA
+    face_shadow_lifting_enabled: bool = Field(default=True, alias="FACE_SHADOW_LIFTING_ENABLED")
+    face_shadow_clip_limit: float = Field(default=3.0, alias="FACE_SHADOW_CLIP_LIMIT")
+    face_shadow_gamma: float = Field(default=0.60, alias="FACE_SHADOW_GAMMA")
+    face_super_res_enabled: bool = Field(default=True, alias="FACE_SUPER_RES_ENABLED")
+    face_super_res_threshold: int = Field(default=60, alias="FACE_SUPER_RES_THRESHOLD")
+
     # Aceleração Máxima TensorRT (NVIDIA CUDA)
     use_tensorrt: bool = Field(default=True, alias="USE_TENSORRT")
     engine_path: str = Field(default="models/yolo11n.engine", alias="ENGINE_PATH")

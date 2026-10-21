@@ -185,6 +185,45 @@ class FaceRecognizer:
         logger.info(f"Carregamento biométrico concluído: {person_count} pessoas ({total_photos} fotos processadas).")
         return person_count
 
+    @staticmethod
+    def enhance_shadow_face(img_bgr: np.ndarray, clip_limit: float = 3.0, gamma: float = 0.60) -> np.ndarray:
+        """
+        Módulo 1 SOTA: Realce Fotométrico Adaptativo (P&B + CLAHE & Shadow Lifting)
+        - Isola o canal de luminância pura (LAB L) e elimina artefatos cromáticos de compressão H.264/H.265.
+        - Aplica CLAHE adaptativo para redistribuir iluminação sem estourar highlights.
+        - Aplica Gamma Correction adaptativo para elevar sombras profundas sob marquises.
+        - Retorna imagem de 3 canais cinza calibrada para detecção e reconhecimento biométrico.
+        """
+        if img_bgr is None or img_bgr.size == 0:
+            return img_bgr
+
+        try:
+            if img_bgr.ndim == 3 and img_bgr.shape[2] == 4:
+                work = cv2.cvtColor(img_bgr, cv2.COLOR_BGRA2BGR)
+            elif img_bgr.ndim == 2:
+                work = cv2.cvtColor(img_bgr, cv2.COLOR_GRAY2BGR)
+            else:
+                work = img_bgr.copy()
+
+            # Espaço LAB para isolar Luminância de Croma
+            lab = cv2.cvtColor(work, cv2.COLOR_BGR2LAB)
+            l_chan, a_chan, b_chan = cv2.split(lab)
+
+            # CLAHE adaptativo no canal L
+            clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(8, 8))
+            cl = clahe.apply(l_chan)
+
+            # Gamma Lifting para sombras profundas
+            inv_gamma = 1.0 / max(0.1, gamma)
+            table = np.array([((i / 255.0) ** inv_gamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
+            cl_gamma = cv2.LUT(cl, table)
+
+            # Recompõe em 3 canais P&B limpos e de alto contraste
+            enhanced_bgr = cv2.cvtColor(cl_gamma, cv2.COLOR_GRAY2BGR)
+            return enhanced_bgr
+        except Exception:
+            return img_bgr
+
     def _check_face_quality(self, face_crop: np.ndarray, fw: int, fh: int) -> Tuple[bool, str]:
         """
         Face Quality Assessment (FQA):
@@ -319,6 +358,27 @@ class FaceRecognizer:
                     if body_crop.size > 0:
                         faces = self.insight_app.get(body_crop)
                         crop_x1, crop_y1 = x1, y1
+
+                # [MÓDULO 1 SOTA] DUAL-PASS SHADOW LIFTING:
+                # Se não detectou face devido a sombras profundas ou contraluz severa,
+                # aplica realce fotométrico adaptativo (P&B + CLAHE + Gamma) e repete a busca!
+                if not faces and settings.face_shadow_lifting_enabled:
+                    enhanced_head = self.enhance_shadow_face(
+                        head_crop,
+                        clip_limit=settings.face_shadow_clip_limit,
+                        gamma=settings.face_shadow_gamma
+                    )
+                    faces = self.insight_app.get(enhanced_head)
+                    if not faces:
+                        body_crop = frame_bgr[y1:y2, x1:x2]
+                        if body_crop.size > 0:
+                            enhanced_body = self.enhance_shadow_face(
+                                body_crop,
+                                clip_limit=settings.face_shadow_clip_limit,
+                                gamma=settings.face_shadow_gamma
+                            )
+                            faces = self.insight_app.get(enhanced_body)
+                            crop_x1, crop_y1 = x1, y1
 
                 if not faces:
                     return "Desconhecido", 0.0, False, None
