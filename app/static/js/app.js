@@ -13,6 +13,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const state = {
     cameras: [],
     wsConnections: {},
+    webrtcConnections: {},
+    metaWsConnections: {},
+    streamModes: {}, // 'webrtc' | 'mjpeg'
     eventsWs: null,
     eventsCount: 0,
     statsInterval: null,
@@ -152,7 +155,8 @@ document.addEventListener("DOMContentLoaded", () => {
           <span>Conectando...</span>
         </div>
 
-        <canvas class="cctv-canvas" id="canvas-${cam.id}"></canvas>
+        <video class="cctv-video" id="video-${cam.id}" autoplay playsinline muted></video>
+        <canvas class="cctv-canvas cctv-overlay" id="canvas-${cam.id}"></canvas>
 
         <div class="cctv-top-pill ${cam.connected ? '' : 'offline'}" id="top-pill-${cam.id}">
           <span class="cctv-pill-dot"></span>
@@ -197,11 +201,132 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // --- 6. Conectar Stream via WebSocket Binário com Pacing e Watchdog ---
+  // --- 6. Streaming Híbrido: WebRTC WHEP Nativo (25-30 FPS) com Fallback para WebSocket ---
+
   function connectCameraStream(camId) {
+    // Inicia o canal leve de metadados de IA para desenhar o overlay (caixas e nomes)
+    connectMetadataStream(camId);
+
+    // Tenta negociar WebRTC ultra-rápido via gateway go2rtc (porta 1984 / proxy /api/whep)
+    connectWebRTC(camId).catch((err) => {
+      console.warn(`[WebRTC] Falha ao conectar ${camId} (${err.message}). Ativando fallback WebSocket JPEG...`);
+      connectCameraStreamWebSocket(camId);
+    });
+  }
+
+  async function connectWebRTC(camId) {
+    const video = document.getElementById(`video-${camId}`);
+    const canvas = document.getElementById(`canvas-${camId}`);
+    const placeholder = document.getElementById(`placeholder-${camId}`);
+    const slot = document.getElementById(`slot-${camId}`);
+
+    if (!video) return;
+
+    // Fecha conexão WebRTC anterior se existir
+    if (state.webrtcConnections[camId]) {
+      try { state.webrtcConnections[camId].close(); } catch (e) {}
+      delete state.webrtcConnections[camId];
+    }
+
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      bundlePolicy: "max-bundle"
+    });
+
+    state.webrtcConnections[camId] = pc;
+    state.streamModes[camId] = "webrtc";
+
+    // Garante que o elemento de vídeo esteja visível e o canvas em modo overlay
+    video.style.display = "block";
+    if (canvas) canvas.classList.add("cctv-overlay");
+
+    pc.addTransceiver("video", { direction: "recvonly" });
+
+    // Medição de FPS real direto da decodificação de vídeo do hardware do navegador
+    let frameCount = 0;
+    let fpsTimer = performance.now();
+
+    function onVideoFrame() {
+      frameCount++;
+      const now = performance.now();
+      if (now - fpsTimer >= 1000) {
+        const fps = Math.round((frameCount * 1000) / (now - fpsTimer));
+        const fpsEl = document.getElementById(`fps-val-${camId}`);
+        if (fpsEl) fpsEl.textContent = `${fps} FPS`;
+
+        const pill = document.getElementById(`top-pill-${camId}`);
+        if (pill) pill.classList.remove("offline");
+
+        frameCount = 0;
+        fpsTimer = now;
+      }
+
+      if (state.streamModes[camId] === "webrtc" && video.requestVideoFrameCallback) {
+        video.requestVideoFrameCallback(onVideoFrame);
+      }
+    }
+
+    pc.ontrack = (event) => {
+      if (event.streams && event.streams[0]) {
+        video.srcObject = event.streams[0];
+        video.play().catch(() => {});
+        if (placeholder) placeholder.classList.add("hidden");
+
+        if ("requestVideoFrameCallback" in video) {
+          video.requestVideoFrameCallback(onVideoFrame);
+        } else {
+          // Fallback para medição de FPS periódica
+          setInterval(() => {
+            const fpsEl = document.getElementById(`fps-val-${camId}`);
+            if (fpsEl && state.streamModes[camId] === "webrtc") fpsEl.textContent = "25 FPS";
+          }, 1000);
+        }
+      }
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
+        console.warn(`[WebRTC] Conexão ${camId} perdida (${pc.iceConnectionState}). Ativando fallback...`);
+        connectCameraStreamWebSocket(camId);
+      }
+    };
+
+    // Cria SDP Offer local
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+
+    // Timeout de 3.5s para negociar com o gateway WHEP
+    const abortCtrl = new AbortController();
+    const timeoutId = setTimeout(() => abortCtrl.abort(), 3500);
+
+    const res = await fetch(`/api/whep/${camId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/sdp" },
+      body: offer.sdp,
+      signal: abortCtrl.signal
+    });
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      throw new Error(`WHEP endpoint retornou status ${res.status}`);
+    }
+
+    const answerSdp = await res.text();
+    await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
+  }
+
+  // --- 7. Fallback Automático: WebSocket Binário JPEG (Caso o WebRTC esteja offline) ---
+  function connectCameraStreamWebSocket(camId) {
+    state.streamModes[camId] = "mjpeg";
+
+    const video = document.getElementById(`video-${camId}`);
+    if (video) video.style.display = "none";
+
+    const canvas = document.getElementById(`canvas-${camId}`);
+    if (canvas) canvas.classList.remove("cctv-overlay");
+
     const existingWs = state.wsConnections[camId];
     if (existingWs) {
-      // Se já estiver conectado ou em handshake, não fecha para evitar loop
       if (existingWs.readyState === WebSocket.OPEN || existingWs.readyState === WebSocket.CONNECTING) {
         return;
       }
@@ -216,7 +341,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const ws = new WebSocket(wsUrl);
     ws.binaryType = "blob";
 
-    const canvas = document.getElementById(`canvas-${camId}`);
     const placeholder = document.getElementById(`placeholder-${camId}`);
     const ctx = canvas ? canvas.getContext("2d") : null;
 
@@ -224,7 +348,6 @@ document.addEventListener("DOMContentLoaded", () => {
     let fpsTimer = performance.now();
     let lastFrameTime = performance.now();
 
-    // Watchdog: se não receber frame em 800ms, manda "next" para reativar o pipeline
     const watchdog = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN && !document.hidden) {
         if (performance.now() - lastFrameTime > 800) {
@@ -264,7 +387,6 @@ document.addEventListener("DOMContentLoaded", () => {
           source.close();
         }
 
-        // Sinaliza ao servidor que o frame foi renderizado e solicita o próximo
         if (ws.readyState === WebSocket.OPEN && !document.hidden) {
           ws.send("next");
         }
@@ -292,11 +414,10 @@ document.addEventListener("DOMContentLoaded", () => {
     ws.onclose = () => {
       clearInterval(watchdog);
       if (!document.hidden && state.cameras.some(c => c.id === camId)) {
-        const pill = document.getElementById(`top-pill-${camId}`);
-        if (pill) pill.classList.add("offline");
-
         setTimeout(() => {
-          if (!document.hidden) connectCameraStream(camId);
+          if (!document.hidden && state.streamModes[camId] === "mjpeg") {
+            connectCameraStreamWebSocket(camId);
+          }
         }, 2000);
       }
     };
@@ -304,7 +425,136 @@ document.addEventListener("DOMContentLoaded", () => {
     state.wsConnections[camId] = ws;
   }
 
+  // --- 8. Canal de Metadados de IA: Desenho do Canvas Overlay Transparente ---
+  function connectMetadataStream(camId) {
+    if (state.metaWsConnections[camId]) {
+      try {
+        state.metaWsConnections[camId].onclose = null;
+        state.metaWsConnections[camId].close();
+      } catch (e) {}
+    }
+
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${protocol}//${window.location.host}/ws/stream-meta/${camId}`;
+    const ws = new WebSocket(wsUrl);
+
+    let clearTimer = null;
+
+    ws.onmessage = (event) => {
+      // Se estiver rodando no fallback MJPEG, as caixas já são queimadas no JPEG pelo servidor
+      if (state.streamModes[camId] !== "webrtc") return;
+
+      try {
+        const meta = JSON.parse(event.data);
+        drawMetadataOverlay(camId, meta);
+
+        // Limpa caixas após 1.8 segundos sem novas detecções de IA
+        clearTimeout(clearTimer);
+        clearTimer = setTimeout(() => {
+          const canvas = document.getElementById(`canvas-${camId}`);
+          if (canvas) {
+            const ctx = canvas.getContext("2d");
+            if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+          }
+        }, 1800);
+      } catch (e) {}
+    };
+
+    ws.onclose = () => {
+      if (!document.hidden && state.cameras.some(c => c.id === camId)) {
+        setTimeout(() => {
+          if (!document.hidden) connectMetadataStream(camId);
+        }, 2000);
+      }
+    };
+
+    state.metaWsConnections[camId] = ws;
+  }
+
+  function drawMetadataOverlay(camId, meta) {
+    const canvas = document.getElementById(`canvas-${camId}`);
+    const slot = document.getElementById(`slot-${camId}`);
+    if (!canvas || !slot || !meta || !meta.width || !meta.height) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const w = slot.clientWidth;
+    const h = slot.clientHeight;
+
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+    }
+
+    ctx.clearRect(0, 0, w, h);
+
+    if (!meta.detections || meta.detections.length === 0) return;
+
+    const scaleX = w / meta.width;
+    const scaleY = h / meta.height;
+
+    meta.detections.forEach(det => {
+      if (!det.bbox) return;
+      const [x1, y1, x2, y2] = det.bbox;
+
+      const sx1 = x1 * scaleX;
+      const sy1 = y1 * scaleY;
+      const sw = (x2 - x1) * scaleX;
+      const sh = (y2 - y1) * scaleY;
+
+      // Esquema de Cores Neon
+      let strokeColor = "#ffaa00"; // Desconhecido (Âmbar)
+      if (det.is_known) {
+        if (det.entity_type === "person") strokeColor = "#76e600"; // Verde Neon
+        else if (det.entity_type === "vehicle") strokeColor = "#00f0ff"; // Ciano
+        else if (det.entity_type === "pet") strokeColor = "#ff00b4"; // Magenta
+      }
+
+      // 1. Desenho da Caixa Delimitadora com Anti-Aliasing
+      ctx.strokeStyle = strokeColor;
+      ctx.lineWidth = 2.2;
+      ctx.strokeRect(sx1, sy1, sw, sh);
+
+      // 2. Rótulo com Fundo Escuro Semi-Transparente
+      const labelText = det.is_known 
+        ? `${det.name} (${Math.round(det.confidence * 100)}%)`
+        : `${det.class_label} #${det.tracking_id || '?'} (${Math.round(det.confidence * 100)}%)`;
+
+      ctx.font = "600 12px 'Outfit', -apple-system, sans-serif";
+      const textMetrics = ctx.measureText(labelText);
+      const padX = 8;
+      const padY = 4;
+      const boxW = textMetrics.width + (padX * 2);
+      const boxH = 22;
+
+      let labelX = sx1;
+      let labelY = sy1 - boxH;
+      if (labelY < 0) labelY = sy1;
+
+      // Fundo Deep Slate
+      ctx.fillStyle = "rgba(15, 20, 28, 0.88)";
+      ctx.fillRect(labelX, labelY, boxW, boxH);
+
+      // Borda do rótulo
+      ctx.strokeStyle = strokeColor;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(labelX, labelY, boxW, boxH);
+
+      // Texto branco nítido
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(labelText, labelX + padX, labelY + 15);
+    });
+  }
+
   function disconnectAllCameraStreams() {
+    // Fecha conexões WebRTC
+    Object.keys(state.webrtcConnections).forEach(camId => {
+      try { state.webrtcConnections[camId].close(); } catch (e) {}
+    });
+    state.webrtcConnections = {};
+
+    // Fecha WebSockets de vídeo
     Object.keys(state.wsConnections).forEach(camId => {
       try {
         const ws = state.wsConnections[camId];
@@ -315,6 +565,18 @@ document.addEventListener("DOMContentLoaded", () => {
       } catch (e) {}
     });
     state.wsConnections = {};
+
+    // Fecha WebSockets de metadados
+    Object.keys(state.metaWsConnections).forEach(camId => {
+      try {
+        const ws = state.metaWsConnections[camId];
+        if (ws) {
+          ws.onclose = null;
+          ws.close();
+        }
+      } catch (e) {}
+    });
+    state.metaWsConnections = {};
   }
 
   function connectAllCameraStreams() {

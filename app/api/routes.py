@@ -1,7 +1,9 @@
 import os
+import urllib.request
+import urllib.error
 from pathlib import Path
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 
 from app.core.config import settings
@@ -9,6 +11,39 @@ from app.stream.manager import stream_manager
 from app.storage.database import db
 
 router = APIRouter(prefix="/api", tags=["API"])
+
+
+@router.post("/whep/{camera_id}")
+async def whep_proxy(camera_id: str, request: Request):
+    """
+    Proxy reverso WHEP para negociação WebRTC transparente com o gateway go2rtc.
+    Recebe a SDP Offer do navegador e encaminha para o go2rtc local (porta 1984),
+    retornando a SDP Answer sem necessidade de portas adicionais ou problemas de CORS.
+    """
+    sdp_offer = await request.body()
+    go2rtc_url = f"http://127.0.0.1:1984/api/whep?src={camera_id}"
+
+    try:
+        req = urllib.request.Request(
+            go2rtc_url,
+            data=sdp_offer,
+            headers={"Content-Type": "application/sdp"},
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
+            answer_sdp = resp.read()
+            return Response(
+                content=answer_sdp,
+                status_code=resp.status,
+                media_type="application/sdp"
+            )
+    except urllib.error.HTTPError as e:
+        return Response(content=e.read(), status_code=e.code)
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Gateway WebRTC go2rtc offline ou indisponível: {e}"
+        )
 
 
 @router.get("/cameras")

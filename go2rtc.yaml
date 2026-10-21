@@ -1,0 +1,19 @@
+# Configuração do Gateway WebRTC go2rtc para o Cerberus AI
+# Documentação: https://github.com/AlexxIT/go2rtc
+
+streams:
+  cam-0:
+    - rtsp://etbt:dx4ana@192.168.68.53:554/stream1#backchannel=0
+  cam-1:
+    - rtsp://afey:dm24t4@192.168.68.57:554/stream1#backchannel=0
+  cam-2:
+    - rtsp://wnsj:7kr3kw@192.168.68.56:554/stream1#backchannel=0
+
+api:
+  listen: ":1984"
+
+webrtc:
+  listen: ":8555"
+
+log:
+  level: info

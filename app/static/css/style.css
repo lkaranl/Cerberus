@@ -68,12 +68,33 @@ body.clean-cctv-body {
   justify-content: center;
 }
 
+.cctv-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  background: #000;
+  z-index: 1;
+}
+
 .cctv-canvas {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
   background: #000;
+}
+
+.cctv-canvas.cctv-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  background: transparent !important;
+  z-index: 4;
 }
 
 /* Loader / Placeholder de Câmera */

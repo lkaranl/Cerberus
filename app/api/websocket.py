@@ -83,3 +83,33 @@ async def websocket_events(websocket: WebSocket):
             await websocket.close()
         except Exception:
             pass
+
+
+@ws_router.websocket("/stream-meta/{camera_id}")
+async def websocket_stream_meta(websocket: WebSocket, camera_id: str):
+    """
+    Canal de metadados em tempo real para o overlay de vídeo WebRTC.
+    Transmite coordenadas de caixas, identidades e detecções a cada ciclo de IA em formato JSON ultraleve.
+    """
+    await websocket.accept()
+    queue = stream_manager.register_meta_listener(camera_id)
+
+    try:
+        # Envia de imediato os últimos metadados da câmera se disponíveis
+        latest_meta = stream_manager.latest_metadata.get(camera_id)
+        if latest_meta:
+            await websocket.send_text(json.dumps(latest_meta))
+
+        while True:
+            meta = await queue.get()
+            await websocket.send_text(json.dumps(meta))
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.debug(f"Conexão de metadados finalizada ({camera_id}): {e}")
+    finally:
+        stream_manager.unregister_meta_listener(camera_id, queue)
+        try:
+            await websocket.close()
+        except Exception:
+            pass

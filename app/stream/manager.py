@@ -30,6 +30,10 @@ class StreamManager:
         self.inference_fps: Dict[str, float] = {}
         self.stream_fps: Dict[str, float] = {}
 
+        # Armazenamento e listeners de metadados para overlay WebRTC
+        self.latest_metadata: Dict[str, Dict[str, Any]] = {}
+        self._meta_listeners: Dict[str, Set[asyncio.Queue]] = {}
+
         # Clientes WebSocket conectados para receber eventos em tempo real
         self._event_listeners: Set[asyncio.Queue] = set()
         self._running = False
@@ -109,6 +113,33 @@ class StreamManager:
 
     def unregister_event_listener(self, q: asyncio.Queue) -> None:
         self._event_listeners.discard(q)
+
+    def register_meta_listener(self, camera_id: str) -> asyncio.Queue:
+        if camera_id not in self._meta_listeners:
+            self._meta_listeners[camera_id] = set()
+        q: asyncio.Queue = asyncio.Queue(maxsize=10)
+        self._meta_listeners[camera_id].add(q)
+        return q
+
+    def unregister_meta_listener(self, camera_id: str, q: asyncio.Queue) -> None:
+        if camera_id in self._meta_listeners:
+            self._meta_listeners[camera_id].discard(q)
+
+    def _broadcast_metadata(self, camera_id: str, payload: Dict[str, Any]) -> None:
+        listeners = self._meta_listeners.get(camera_id, set())
+        dead = set()
+        for q in listeners:
+            try:
+                q.put_nowait(payload)
+            except asyncio.QueueFull:
+                try:
+                    _ = q.get_nowait()
+                    q.put_nowait(payload)
+                except Exception:
+                    pass
+            except Exception:
+                dead.add(q)
+        listeners -= dead
 
     def start(self) -> None:
         """Inicializa captura e processamento assíncrono paralelo por câmera."""
@@ -278,6 +309,32 @@ class StreamManager:
                     "detections": detections,
                     "timestamp": now
                 }
+
+                # Monta e publica metadados ultraleves para o overlay WebRTC
+                h_frame, w_frame = raw_frame.shape[:2]
+                clean_dets = []
+                for det in detections:
+                    clean_dets.append({
+                        "tracking_id": det.get("tracking_id"),
+                        "bbox": [int(v) for v in det["bbox"]] if "bbox" in det else None,
+                        "entity_type": det.get("entity_type", "person"),
+                        "class_label": det.get("class_label", "Objeto"),
+                        "name": det.get("person_name", "Desconhecido"),
+                        "is_known": det.get("is_known", False),
+                        "confidence": round(float(det.get("confidence", 0.0)), 2),
+                        "license_plate": det.get("license_plate", ""),
+                        "is_stationary": det.get("is_stationary", False)
+                    })
+
+                meta_payload = {
+                    "camera_id": cam.id,
+                    "timestamp": now,
+                    "width": w_frame,
+                    "height": h_frame,
+                    "detections": clean_dets
+                }
+                self.latest_metadata[cam.id] = meta_payload
+                self._broadcast_metadata(cam.id, meta_payload)
 
                 # Métricas de FPS de inferência da IA
                 fps_counter += 1
