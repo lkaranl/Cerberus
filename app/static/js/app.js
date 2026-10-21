@@ -159,8 +159,6 @@ document.addEventListener("DOMContentLoaded", () => {
           <span id="fps-val-${cam.id}">-- FPS</span>
         </div>
 
-        <div class="cctv-bottom-name">${cam.name}</div>
-
         <button class="cctv-fullscreen-btn" id="fs-btn-${cam.id}" title="Tela Cheia">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="15 3 21 3 21 9"/>

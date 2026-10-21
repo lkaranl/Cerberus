@@ -229,7 +229,7 @@ body.clean-cctv-body {
 }
 
 /* -------------------------------------------------------------------------
-   MÓDULO: RELÓGIO CFTV (MAIOR, COM BORDA DE SEGUNDOS ANIMADA)
+   MÓDULO: RELÓGIO CFTV MODERNO (CARD TAC-STANDBY COM 60 TICKS)
    ------------------------------------------------------------------------- */
 .cctv-clock-widget {
   display: flex;
@@ -239,34 +239,66 @@ body.clean-cctv-body {
   flex: 0 0 auto;
 }
 
-.clock-module-wrap {
+.modern-clock-card {
+  width: 360px;
+  background: rgba(14, 18, 24, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  padding: 16px 20px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
 }
 
-.clock-greeting {
+.clock-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.clock-greeting-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-family: var(--font-mono);
-  font-size: 0.85rem;
+  font-size: 0.78rem;
   font-weight: 700;
-  letter-spacing: 3px;
   color: var(--accent-emerald);
-  margin-bottom: 12px;
-  text-transform: uppercase;
+  letter-spacing: 1.5px;
 }
 
-/* Caixa com Borda de Segundos Perimétrica */
-.clock-frame-container {
+.clock-icon {
+  font-size: 0.95rem;
+}
+
+.clock-seconds-counter {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--accent-emerald);
+  background: var(--accent-emerald-dim);
+  border: 1px solid rgba(0, 230, 118, 0.35);
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+/* Mostrador Central com Borda de 60 Ticks */
+.clock-display-viewport {
   position: relative;
-  width: 310px;
-  height: 165px;
+  width: 320px;
+  height: 160px;
   display: flex;
   align-items: center;
   justify-content: center;
+  background: rgba(0, 0, 0, 0.75);
+  border-radius: 18px;
+  overflow: hidden;
 }
 
-.clock-ticks-svg {
+.clock-seconds-svg {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -274,67 +306,91 @@ body.clean-cctv-body {
   pointer-events: none;
 }
 
-/* Trilha pontilhada de 60 segundos */
-.clock-rect-track {
-  fill: rgba(255, 255, 255, 0.02);
-  stroke: rgba(255, 255, 255, 0.16);
-  stroke-width: 2.5;
-  stroke-dasharray: 4 6;
-}
-
-/* Barra luminosa que acompanha os segundos */
-.clock-rect-progress {
+.clock-svg-track {
   fill: none;
-  stroke: var(--accent-emerald);
+  stroke: rgba(255, 255, 255, 0.12);
   stroke-width: 3.5;
   stroke-linecap: round;
-  filter: drop-shadow(0 0 8px rgba(0, 230, 118, 0.8));
-  transition: stroke-dashoffset 0.4s ease;
 }
 
-.clock-digits-box {
+.clock-svg-active {
+  fill: none;
+  stroke: var(--accent-emerald);
+  stroke-width: 4.5;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 8px rgba(0, 230, 118, 0.9));
+  transition: stroke-dashoffset 0.3s ease;
+}
+
+.clock-time-display {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: center;
+  gap: 2px;
   z-index: 2;
 }
 
-/* Dígitos da Hora Maiores e Mais Imponentes */
-.clock-digits {
+.time-digit {
   font-family: var(--font-main);
-  font-size: 5.4rem;
+  font-size: 5.6rem;
   font-weight: 300;
   line-height: 1;
   color: #ffffff;
   letter-spacing: -3px;
-  text-shadow: 0 0 15px rgba(255, 255, 255, 0.15);
+  text-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
 }
 
-.clock-seconds-mini {
-  font-size: 1.25rem;
-  font-weight: 700;
+.time-colon {
+  font-size: 4.8rem;
   color: var(--accent-emerald);
-  margin-left: 6px;
-  letter-spacing: 0.5px;
+  line-height: 1;
+  font-weight: 300;
+  margin: 0 2px;
+  transform: translateY(-4px);
+  animation: pulseColon 1s infinite alternate;
 }
 
-.clock-date {
-  font-size: 0.88rem;
+@keyframes pulseColon {
+  0% { opacity: 0.3; }
+  100% { opacity: 1; }
+}
+
+.clock-footer-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 10px;
+}
+
+.clock-full-date {
+  font-size: 0.78rem;
   font-weight: 500;
   color: var(--text-dim);
-  margin-top: 14px;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
 }
 
-.cctv-gpu-tag {
+.clock-gpu-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.65rem;
   color: var(--text-muted);
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 4px 10px;
+  padding: 3px 8px;
   border-radius: 4px;
-  margin-top: 10px;
+  white-space: nowrap;
+}
+
+.gpu-indicator-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent-emerald);
+  box-shadow: 0 0 5px var(--accent-emerald);
 }
 
 /* -------------------------------------------------------------------------
