@@ -6,6 +6,7 @@ import numpy as np
 
 from app.core.config import settings
 from app.core.logging import logger
+from app.ai.face_super_res import face_super_resolver
 
 class FaceRecognizer:
     """
@@ -424,6 +425,23 @@ class FaceRecognizer:
 
                 # Vetor biométrico probe 512-d L2-normalizado
                 probe_emb = best_face.embedding.astype(np.float32)
+
+                # [MÓDULO 2 SOTA] SUPER-RESOLUÇÃO FACIAL CONDICIONAL:
+                # Se a face for distante/pequena (< settings.face_super_res_threshold px),
+                # reconstrói a alta frequência anatômica e re-extrai os 512 números via ArcFace
+                if settings.face_super_res_enabled and (fw < settings.face_super_res_threshold or fh < settings.face_super_res_threshold):
+                    rec_model = self.insight_app.models.get('recognition') if self.insight_app else None
+                    if rec_model is not None:
+                        try:
+                            enhanced_face = face_super_resolver.enhance(face_crop_img, target_size=(112, 112))
+                            sr_emb = rec_model.get_feat(enhanced_face).flatten().astype(np.float32)
+                            sr_norm = np.linalg.norm(sr_emb)
+                            if sr_norm > 0:
+                                probe_emb = sr_emb / sr_norm
+                                logger.debug(f"🔍 Face distante ({fw}x{fh}px) enriquecida via Super-Resolução")
+                        except Exception as sr_err:
+                            logger.debug(f"Falha ao re-extrair com Super-Resolução: {sr_err}")
+
                 p_norm = np.linalg.norm(probe_emb)
                 if p_norm > 0:
                     probe_emb = probe_emb / p_norm
