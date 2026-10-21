@@ -69,9 +69,9 @@ scripts/
   - `compute_face_embedding(face_crop: np.ndarray) -> list[float]`
   - `get_device_info() -> dict`
 
-- [ ] **Passo 2.1: Criar classe `AmdInferenceEngine` configurada para direcionar tensores ao adapter Vulkan da AMD.**
-- [ ] **Passo 2.2: Implementar fallback gracioso para CPU caso a GPU AMD esteja momentaneamente em uso exclusivo de renderização 3D pelo GNOME.**
-- [ ] **Passo 2.3: Commit:** `git commit -m "feat(amd-worker): criar engine de inferencia com aceleracao vulkan para rx 5600 xt"`
+- [x] **Passo 2.1: Criar classe `AmdInferenceEngine` configurada para direcionar tensores ao adapter Vulkan da AMD.**
+- [x] **Passo 2.2: Implementar fallback gracioso para CPU caso a GPU AMD esteja momentaneamente em uso exclusivo de renderização 3D pelo GNOME.**
+- [x] **Passo 2.3: Commit:** `git commit -m "feat(amd-worker): criar engine de inferencia com aceleracao vulkan para rx 5600 xt"`
 
 ---
 
@@ -85,9 +85,9 @@ scripts/
   - `POST /api/v1/restore-face` -> Recebe imagem base64 e retorna imagem restaurada em alta definição.
   - `POST /api/v1/face-embedding` -> Recebe imagem recortada e retorna vetor biométrico normalizado (512-d).
 
-- [ ] **Passo 3.1: Escrever servidor FastAPI desacoplado ouvindo em `127.0.0.1:8001`.**
-- [ ] **Passo 3.2: Implementar fila com controle de concorrência (`asyncio.Semaphore`) para proteger a VRAM da RX 5600 XT contra estouro.**
-- [ ] **Passo 3.3: Commit:** `git commit -m "feat(amd-worker): criar servidor fastapi desacoplado para worker amd"`
+- [x] **Passo 3.1: Escrever servidor FastAPI desacoplado ouvindo em `127.0.0.1:8001`.**
+- [x] **Passo 3.2: Implementar fila com controle de concorrência (`asyncio.Semaphore`) para proteger a VRAM da RX 5600 XT contra estouro.**
+- [x] **Passo 3.3: Commit:** `git commit -m "feat(amd-worker): criar servidor fastapi desacoplado para worker amd"`
 
 ---
 
@@ -100,12 +100,12 @@ scripts/
 - Consumes: Endpoints do Worker AMD na porta 8001.
 - Produz: `AmdWorkerClient.dispatch_face_restoration(crop: np.ndarray) -> Optional[np.ndarray]`
 
-- [ ] **Passo 4.1: Criar cliente assíncrono com pool de conexões HTTP `httpx.AsyncClient` com timeout configurável (máx 1.5s).**
-- [ ] **Passo 4.2: Implementar política de fallback automático:**
+- [x] **Passo 4.1: Criar cliente assíncrono com pool de conexões HTTP `httpx.AsyncClient` com timeout configurável (máx 1.5s).**
+- [x] **Passo 4.2: Implementar política de fallback automático:**
   - Se o Worker AMD responder em <1.5s, usar o resultado de alta fidelidade da RX 5600 XT.
   - Se o Worker AMD estiver desligado ou der timeout, processar localmente na GTX 1660 sem travar a thread de vídeo.
-- [ ] **Passo 4.3: Conectar o `AmdWorkerClient` aos gatilhos de corte de rosto do Cerberus.**
-- [ ] **Passo 4.4: Commit:** `git commit -m "feat(core): integrar cliente assincrono do cerberus com worker amd"`
+- [x] **Passo 4.3: Conectar o `AmdWorkerClient` aos gatilhos de corte de rosto do Cerberus.**
+- [x] **Passo 4.4: Commit:** `git commit -m "feat(core): integrar cliente assincrono do cerberus com worker amd"`
 
 ---
 
@@ -119,9 +119,9 @@ scripts/
   - Verificação de integridade da imagem restaurada.
   - Teste de resiliência a quedas (desligar o worker e verificar se o Cerberus continua operando na 1660).
 
-- [ ] **Passo 5.1: Escrever script de teste ponta a ponta simulando 10 requisições simultâneas de cortes de rosto.**
-- [ ] **Passo 5.2: Medir o tempo de resposta e certificar ausência de travamentos no stream principal.**
-- [ ] **Passo 5.3: Commit:** `git commit -m "test: adicionar suite de validacao de integracao e resiliencia dual gpu"`
+- [x] **Passo 5.1: Escrever script de teste ponta a ponta simulando 10 requisições simultâneas de cortes de rosto.**
+- [x] **Passo 5.2: Medir o tempo de resposta e certificar ausência de travamentos no stream principal.**
+- [x] **Passo 5.3: Commit:** `git commit -m "test: adicionar suite de validacao de integracao e resiliencia dual gpu"`
 
 ---
 
