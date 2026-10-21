@@ -124,7 +124,7 @@ graph TD
 | **Passo 2** | **OSNet (Deep Re-ID)** | ✅ **Concluído & Validado** | Rastreamento de moradores mesmo de costas/capuz |
 | **Passo 3** | **YOLO11 (TensorRT FP16)** | ✅ **Concluído & Validado** | 142.2 FPS na GTX 1660 com atenção espacial C2PSA |
 | **Passo 4** | **CLIP Multilíngue SOTA** | ✅ **Concluído & Validado** | Busca no histórico por texto livre em português no Telegram (<10 ms texto) |
-| **Passo 5** | **Edge VLM (Moondream2)** | 🚀 **Em Validação** | Análise visual avançada 100% offline na GPU (auditoria e VQA) |
+| **Passo 5** | **Edge VLM (SmolVLM / Moondream)** | ✅ **Concluído & Validado** | Laudo visual e VQA 100% offline na GPU (<1 GB VRAM, 1.8s load) |
 
 ---
 *Documento versionado no repositório Cerberus. Cada etapa só será dada como concluída após teste prático com métricas de tempo e assertividade no servidor real.*
