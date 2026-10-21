@@ -209,17 +209,19 @@ class StreamManager:
         fps_counter = 0
         fps_timer = time.time()
         last_frame_id = -1
+        target_frame_time = 0.05  # 20 FPS cravados para equilíbrio ideal de fluidez e CPU
 
         while self._running:
+            iter_start = time.time()
             try:
                 raw_frame, frame_id = capture.get_latest_frame_and_id()
                 if raw_frame is None:
-                    await asyncio.sleep(0.01)
+                    await asyncio.sleep(0.02)
                     continue
 
                 # Evita recodificar o mesmo frame se a câmera física ainda não enviou um novo
                 if frame_id == last_frame_id:
-                    await asyncio.sleep(0.008)
+                    await asyncio.sleep(0.015)
                     continue
 
                 last_frame_id = frame_id
@@ -258,8 +260,10 @@ class StreamManager:
                     fps_counter = 0
                     fps_timer = now
 
-                # Intervalo suave para cravar ~25 FPS
-                await asyncio.sleep(0.01)
+                # Pacing adaptativo cravando ~20 FPS suaves
+                loop_duration = time.time() - iter_start
+                sleep_time = max(0.005, target_frame_time - loop_duration)
+                await asyncio.sleep(sleep_time)
 
             except asyncio.CancelledError:
                 break

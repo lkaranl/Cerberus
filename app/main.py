@@ -1,3 +1,20 @@
+import os
+# Limita o número de threads internas para evitar contenção de CPU e saturação de núcleos
+os.environ.setdefault("OMP_NUM_THREADS", "2")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "2")
+os.environ.setdefault("MKL_NUM_THREADS", "2")
+os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "2")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "2")
+
+import cv2
+cv2.setNumThreads(2)
+
+try:
+    import torch
+    torch.set_num_threads(2)
+except Exception:
+    pass
+
 from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI

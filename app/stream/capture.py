@@ -154,58 +154,75 @@ class RTSPCapture:
 
         if can_use_nvdec:
             # Tenta inicializar decodificação por hardware NVDEC na GTX 1660
-            try:
-                res_w, res_h = self._probe_resolution()
-                self.resolution = (res_w, res_h)
-                self._frame_bytes = res_w * res_h * 3
+            for attempt_backend in ["cuda", "hevc_cuvid"]:
+                try:
+                    res_w, res_h = self._probe_resolution()
+                    self.resolution = (res_w, res_h)
+                    self._frame_bytes = res_w * res_h * 3
 
-                cmd = [
-                    ffmpeg_bin,
-                    "-nostdin",
-                    "-loglevel", "error",
-                    "-rtsp_transport", "tcp",
-                    "-stimeout", "5000000",
-                    "-max_delay", "500000",
-                    "-reorder_queue_size", "0",
-                    "-an",  # Desativa áudio completamente na fonte para zero overhead
-                    "-flags", "low_delay",
-                    "-fflags", "+discardcorrupt+nobuffer",  # Descarta pacotes corrompidos, elimina faixas rosa/cinza
-                    "-analyzeduration", "500000",
-                    "-probesize", "500000",
-                    "-hwaccel", "cuda",
-                    "-hwaccel_device", str(settings.nvdec_device),
-                    "-i", self.rtsp_url,
-                    "-f", "rawvideo",
-                    "-pix_fmt", "bgr24",
-                    "-"
-                ]
+                    cmd = [
+                        ffmpeg_bin,
+                        "-nostdin",
+                        "-loglevel", "error",
+                        "-rtsp_transport", "tcp",
+                        "-stimeout", "6000000",
+                        "-max_delay", "500000",
+                        "-reorder_queue_size", "0",
+                        "-an",  # Desativa áudio completamente na fonte para zero overhead
+                        "-flags", "low_delay",
+                        "-fflags", "+discardcorrupt+nobuffer",
+                        "-analyzeduration", "1000000",
+                        "-probesize", "1000000",
+                    ]
 
-                self._proc = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.DEVNULL,
-                    bufsize=self._frame_bytes * 2
-                )
+                    if attempt_backend == "cuda":
+                        cmd.extend([
+                            "-hwaccel", "cuda",
+                            "-hwaccel_device", str(settings.nvdec_device),
+                        ])
+                    elif attempt_backend == "hevc_cuvid":
+                        cmd.extend([
+                            "-c:v", "hevc_cuvid",
+                            "-gpu", str(settings.nvdec_device),
+                        ])
 
-                # Verifica se o primeiro frame é lido com sucesso sem congelar
-                raw = self._read_exact_bytes(self._proc, self._frame_bytes, timeout_sec=4.0)
-                if raw is not None and len(raw) == self._frame_bytes:
-                    frame = np.frombuffer(raw, dtype=np.uint8).reshape((res_h, res_w, 3))
-                    self._update_queue(frame)
-                    self.is_connected = True
-                    self.is_nvdec_active = True
-                    self.last_frame_time = time.time()
-                    logger.info(
-                        f"🚀 [NVDEC Hardware] Conectado a {self.camera_name}: {res_w}x{res_h} "
-                        f"(GPU GTX 1660 - 0% CPU)"
+                    cmd.extend([
+                        "-i", self.rtsp_url,
+                        "-f", "rawvideo",
+                        "-pix_fmt", "bgr24",
+                        "-"
+                    ])
+
+                    self._proc = subprocess.Popen(
+                        cmd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.DEVNULL,
+                        bufsize=self._frame_bytes * 2
                     )
-                    return True
-                else:
-                    logger.warning(f"NVDEC não retornou quadro inicial para {self.camera_name}. Revertendo para OpenCV.")
+
+                    # Câmeras IP H.265 transmitem keyframes (I-frames) a cada ~4-5s.
+                    # Timeout de 7.5s garante que o primeiro I-frame seja capturado com folga.
+                    raw = self._read_exact_bytes(self._proc, self._frame_bytes, timeout_sec=7.5)
+                    if raw is not None and len(raw) == self._frame_bytes:
+                        frame = np.frombuffer(raw, dtype=np.uint8).reshape((res_h, res_w, 3))
+                        self._update_queue(frame)
+                        self.is_connected = True
+                        self.is_nvdec_active = True
+                        self.last_frame_time = time.time()
+                        logger.info(
+                            f"🚀 [NVDEC Hardware: {attempt_backend}] Conectado a {self.camera_name}: {res_w}x{res_h} "
+                            f"(GPU GTX 1660 - Decodificação por Hardware ativa)"
+                        )
+                        return True
+                    else:
+                        logger.warning(
+                            f"NVDEC ({attempt_backend}) aguardou keyframe em {self.camera_name} sem retorno. "
+                            "Tentando próximo método..."
+                        )
+                        self._release_resources()
+                except Exception as e:
+                    logger.warning(f"Falha ao iniciar NVDEC ({attempt_backend}) para {self.camera_name}: {e}")
                     self._release_resources()
-            except Exception as e:
-                logger.warning(f"Falha ao iniciar NVDEC para {self.camera_name} ({e}). Revertendo para OpenCV.")
-                self._release_resources()
 
         # Fallback para OpenCV padrão
         try:
