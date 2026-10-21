@@ -1,114 +1,143 @@
 /**
- * Cerberus AI — Módulo de Relógio CFTV Moderno com Borda de 60 Segundos
+ * Cerberus AI — Módulo de Relógio CFTV Estilo Apple Watch Ultra / StandBy
  * 
- * Componente 100% modular e desacoplado.
- * Renderiza mostrador digital de alta precisão com 60 ticks perimétricos animados em SVG.
+ * Engenharia de Mostrador Tático de Alta Fidelidade:
+ * - 60 Marcadores de Segundos (Bezel Ticks) individuais de precisão suíça/aeronáutica.
+ * - Posicionamento geométrico perfeito via SVG Vector Engine nativo.
+ * - Iluminação progressiva com marcador de ponta (leading tick com glow esmeralda).
+ * - Tipografia monumental inspirada na linguagem de design da Apple (San Francisco / Modular Ultra).
+ * - Componente 100% isolado e desacoplado.
  */
 
-class CctvModernClock {
+class AppleModularClock {
   constructor(containerId = "cctv-clock-widget") {
     this.container = document.getElementById(containerId);
     if (!this.container) return;
 
-    this.diasSemana = [
-      "Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira",
-      "Quinta-feira", "Sexta-feira", "Sábado"
-    ];
+    this.diasSemana = ["DOM", "SEG", "TER", "QUA", "QUI", "SEX", "SÁB"];
+    this.meses = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
 
-    this.meses = [
-      "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-      "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
-    ];
-
-    // Dimensões do mostrador retangular
     this.width = 330;
-    this.height = 170;
-    this.radius = 18;
-    this.strokeWidth = 3;
-
-    // Perímetro exato do retângulo com cantos arredondados
-    // P = 2*(W - 2R) + 2*(H - 2R) + 2*PI*R
-    const innerW = this.width - (2 * this.radius);
-    const innerH = this.height - (2 * this.radius);
-    this.perimeter = (2 * innerW) + (2 * innerH) + (2 * Math.PI * this.radius);
-
-    // 60 ticks: cada tick tem 6px de traço e o restante de espaçamento
-    const tickLen = 5.5;
-    const gapLen = (this.perimeter / 60) - tickLen;
-    this.dashArrayPattern = `${tickLen.toFixed(3)} ${gapLen.toFixed(3)}`;
+    this.height = 200;
+    this.tickElements = [];
 
     this.render();
+    this.buildBezelTicks();
     this.start();
   }
 
   render() {
     this.container.innerHTML = `
-      <div class="modern-clock-card">
+      <div class="apple-clock-card">
         
-        <!-- Header com Saudação & Ícone Dinâmico -->
-        <div class="clock-top-bar">
-          <div class="clock-greeting-pill">
-            <span class="clock-icon" id="clock-period-icon">🌤️</span>
-            <span class="clock-greeting-text" id="clock-greeting-text">BOA TARDE</span>
-          </div>
-          <span class="clock-seconds-counter mono" id="clock-seconds-counter">00s</span>
-        </div>
+        <!-- Bezel de 60 Segundos em SVG de Alta Precisão -->
+        <svg class="apple-bezel-svg" id="apple-bezel-svg" viewBox="0 0 ${this.width} ${this.height}">
+          <!-- Trilha invisível usada para calcular as coordenadas exatas dos 60 ticks -->
+          <rect 
+            id="apple-bezel-guide"
+            x="14" y="14" 
+            width="${this.width - 28}" 
+            height="${this.height - 28}" 
+            rx="22" ry="22"
+            fill="none" 
+            stroke="none"
+          />
+          <!-- Grupo onde os 60 marcadores de precisão serão injetados -->
+          <g id="apple-ticks-group"></g>
+        </svg>
 
-        <!-- Mostrador Central com Borda de 60 Ticks -->
-        <div class="clock-display-viewport">
-          <svg class="clock-seconds-svg" viewBox="0 0 ${this.width} ${this.height}">
-            <!-- Trilha Base com os 60 ticks apagados -->
-            <rect 
-              x="${this.strokeWidth / 2}" 
-              y="${this.strokeWidth / 2}" 
-              width="${this.width - this.strokeWidth}" 
-              height="${this.height - this.strokeWidth}" 
-              rx="${this.radius}" 
-              ry="${this.radius}" 
-              class="clock-svg-track"
-              style="stroke-dasharray: ${this.dashArrayPattern};"
-            />
-            <!-- Ticks Ativos iluminados até o segundo atual -->
-            <rect 
-              id="clock-svg-active"
-              x="${this.strokeWidth / 2}" 
-              y="${this.strokeWidth / 2}" 
-              width="${this.width - this.strokeWidth}" 
-              height="${this.height - this.strokeWidth}" 
-              rx="${this.radius}" 
-              ry="${this.radius}" 
-              class="clock-svg-active"
-              style="stroke-dasharray: ${this.dashArrayPattern};"
-            />
-          </svg>
-
-          <!-- Dígitos Grandes e Nítidos -->
-          <div class="clock-time-display">
-            <span class="time-digit mono" id="clock-hours">12</span>
-            <span class="time-colon">:</span>
-            <span class="time-digit mono" id="clock-minutes">00</span>
+        <!-- Conteúdo Interno do Mostrador -->
+        <div class="apple-dial-content">
+          
+          <!-- Topo: Data Compacta & Status do Sistema -->
+          <div class="apple-dial-header">
+            <span class="apple-dial-date" id="apple-dial-date">QUA, 21 OUT</span>
+            <div class="apple-live-status">
+              <span class="apple-status-beacon"></span>
+              <span class="apple-status-text" id="apple-greeting-tag">TARDE</span>
+            </div>
           </div>
-        </div>
 
-        <!-- Rodapé com Data por Extenso e GPU -->
-        <div class="clock-footer-bar">
-          <span class="clock-full-date" id="clock-full-date">Carregando data...</span>
-          <div class="clock-gpu-pill" id="cctv-gpu-tag">
-            <span class="gpu-indicator-dot"></span>
-            <span class="gpu-label-text">GTX 1660 • CUDA ⚡</span>
+          <!-- Centro: Hora Monumental -->
+          <div class="apple-time-display">
+            <div class="apple-digits-wrap">
+              <span class="apple-digit" id="apple-hours">12</span>
+              <span class="apple-colon">:</span>
+              <span class="apple-digit" id="apple-minutes">45</span>
+            </div>
+            <span class="apple-seconds-pill mono" id="apple-seconds-pill">26</span>
           </div>
+
+          <!-- Base: Complications (GPU & Hardware) -->
+          <div class="apple-dial-footer">
+            <div class="apple-gpu-complication" id="cctv-gpu-tag">
+              <span class="apple-gpu-icon">⚡</span>
+              <span class="apple-gpu-text">GTX 1660 • CUDA</span>
+            </div>
+            <span class="apple-system-label">CERBERUS SENTRY</span>
+          </div>
+
         </div>
 
       </div>
     `;
 
-    this.elIcon = document.getElementById("clock-period-icon");
-    this.elGreeting = document.getElementById("clock-greeting-text");
-    this.elSecCounter = document.getElementById("clock-seconds-counter");
-    this.elHours = document.getElementById("clock-hours");
-    this.elMinutes = document.getElementById("clock-minutes");
-    this.elFullDate = document.getElementById("clock-full-date");
-    this.elActiveRect = document.getElementById("clock-svg-active");
+    this.elHours = document.getElementById("apple-hours");
+    this.elMinutes = document.getElementById("apple-minutes");
+    this.elSecPill = document.getElementById("apple-seconds-pill");
+    this.elDate = document.getElementById("apple-dial-date");
+    this.elGreeting = document.getElementById("apple-greeting-tag");
+    this.ticksGroup = document.getElementById("apple-ticks-group");
+  }
+
+  buildBezelTicks() {
+    const guide = document.getElementById("apple-bezel-guide");
+    if (!guide || !this.ticksGroup) return;
+
+    const totalLen = guide.getTotalLength();
+    this.tickElements = [];
+
+    // O segundo 0 começa exatamente no topo central
+    // Para um retângulo de 330x200 com raio 22, o topo central fica em L = (largura_topo / 2)
+    const topCenterOffset = (this.width - 28) / 2;
+
+    for (let i = 0; i < 60; i++) {
+      // Distribui 60 pontos equidistantes
+      const frac = i / 60;
+      let dist = (frac * totalLen) + topCenterOffset;
+      if (dist > totalLen) dist -= totalLen;
+
+      const p1 = guide.getPointAtLength(dist);
+      const nextDist = dist + 1 > totalLen ? dist + 1 - totalLen : dist + 1;
+      const p2 = guide.getPointAtLength(nextDist);
+
+      // Vetor tangente (dx, dy)
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+      const len = Math.sqrt(dx * dx + dy * dy) || 1;
+
+      // Vetor normal apontando para dentro do display (-dy, dx)
+      const nx = -dy / len;
+      const ny = dx / len;
+
+      // Cada 5 segundos (0, 5, 10, 15...) é um marcador maior (marcador mestre de 7px)
+      // Os intermediários têm 4px
+      const isMajor = i % 5 === 0;
+      const tickLength = isMajor ? 7.5 : 4.5;
+      const strokeWidth = isMajor ? 2.0 : 1.2;
+
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      line.setAttribute("x1", p1.x.toFixed(2));
+      line.setAttribute("y1", p1.y.toFixed(2));
+      line.setAttribute("x2", (p1.x + nx * tickLength).toFixed(2));
+      line.setAttribute("y2", (p1.y + ny * tickLength).toFixed(2));
+      line.setAttribute("stroke-width", strokeWidth);
+      line.setAttribute("stroke-linecap", "round");
+      line.setAttribute("class", `apple-tick ${isMajor ? 'major' : 'minor'}`);
+
+      this.ticksGroup.appendChild(line);
+      this.tickElements.push(line);
+    }
   }
 
   start() {
@@ -122,38 +151,40 @@ class CctvModernClock {
       if (this.elHours) this.elHours.textContent = String(h).padStart(2, "0");
       if (this.elMinutes) this.elMinutes.textContent = String(m).padStart(2, "0");
 
-      // Contador de segundos
-      if (this.elSecCounter) this.elSecCounter.textContent = `${String(s).padStart(2, "0")}s`;
+      // Segundos digitais no badge
+      if (this.elSecPill) this.elSecPill.textContent = String(s).padStart(2, "0");
 
-      // Saudação e Ícone de Período
-      if (this.elGreeting && this.elIcon) {
-        if (h >= 5 && h < 12) {
-          this.elGreeting.textContent = "BOM DIA";
-          this.elIcon.textContent = "🌅";
-        } else if (h >= 12 && h < 18) {
-          this.elGreeting.textContent = "BOA TARDE";
-          this.elIcon.textContent = "☀️";
+      // Data estilo Apple Watch
+      if (this.elDate) {
+        const diaSem = this.diasSemana[now.getDay()];
+        const diaNum = now.getDate();
+        const mesStr = this.meses[now.getMonth()];
+        this.elDate.textContent = `${diaSem}, ${diaNum} ${mesStr}`;
+      }
+
+      // Status de período
+      if (this.elGreeting) {
+        if (h >= 5 && h < 12) this.elGreeting.textContent = "MANHÃ";
+        else if (h >= 12 && h < 18) this.elGreeting.textContent = "TARDE";
+        else this.elGreeting.textContent = "NOITE";
+      }
+
+      // Atualização dos 60 Marcadores de Segundos (Apple Modular Bezel)
+      // Ilumina do segundo 0 até o segundo atual 's'
+      for (let i = 0; i < 60; i++) {
+        const tick = this.tickElements[i];
+        if (!tick) continue;
+
+        if (i <= s) {
+          tick.classList.add("active");
+          if (i === s) {
+            tick.classList.add("head");
+          } else {
+            tick.classList.remove("head");
+          }
         } else {
-          this.elGreeting.textContent = "BOA NOITE";
-          this.elIcon.textContent = "🌙";
+          tick.classList.remove("active", "head");
         }
-      }
-
-      // Data formatada com dia da semana
-      if (this.elFullDate) {
-        const diaSemana = this.diasSemana[now.getDay()];
-        const diaMes = now.getDate();
-        const mes = this.meses[now.getMonth()];
-        const ano = now.getFullYear();
-        this.elFullDate.textContent = `${diaSemana}, ${diaMes} de ${mes} de ${ano}`;
-      }
-
-      // Progresso dos 60 Ticks na borda SVG
-      // A cada segundo (0 a 59), ilumina exatamente a fração proporcional de ticks
-      if (this.elActiveRect) {
-        const tickCount = s === 0 ? 60 : s; // 0s fecha o ciclo completo
-        const progressPerimeter = (tickCount / 60) * this.perimeter;
-        this.elActiveRect.style.strokeDashoffset = `${this.perimeter - progressPerimeter}`;
       }
     };
 
@@ -164,5 +195,5 @@ class CctvModernClock {
 
 // Inicialização autônoma do módulo
 document.addEventListener("DOMContentLoaded", () => {
-  window.cerberusClock = new CctvModernClock("cctv-clock-widget");
+  window.cerberusClock = new AppleModularClock("cctv-clock-widget");
 });

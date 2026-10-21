@@ -229,7 +229,7 @@ body.clean-cctv-body {
 }
 
 /* -------------------------------------------------------------------------
-   MÓDULO: RELÓGIO CFTV MODERNO (CARD TAC-STANDBY COM 60 TICKS)
+   MÓDULO: RELÓGIO CFTV (APPLE WATCH MODULAR ULTRA DESIGN)
    ------------------------------------------------------------------------- */
 .cctv-clock-widget {
   display: flex;
@@ -239,158 +239,185 @@ body.clean-cctv-body {
   flex: 0 0 auto;
 }
 
-.modern-clock-card {
-  width: 360px;
-  background: rgba(14, 18, 24, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 20px;
-  padding: 16px 20px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
-}
-
-.clock-top-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-}
-
-.clock-greeting-pill {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-family: var(--font-mono);
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: var(--accent-emerald);
-  letter-spacing: 1.5px;
-}
-
-.clock-icon {
-  font-size: 0.95rem;
-}
-
-.clock-seconds-counter {
-  font-size: 0.74rem;
-  font-weight: 700;
-  color: var(--accent-emerald);
-  background: var(--accent-emerald-dim);
-  border: 1px solid rgba(0, 230, 118, 0.35);
-  padding: 2px 7px;
-  border-radius: 4px;
-}
-
-/* Mostrador Central com Borda de 60 Ticks */
-.clock-display-viewport {
+.apple-clock-card {
   position: relative;
-  width: 320px;
-  height: 160px;
+  width: 330px;
+  height: 200px;
+  background: radial-gradient(circle at 50% 30%, rgba(0, 230, 118, 0.05) 0%, rgba(5, 7, 10, 0.95) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 28px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.12);
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.75);
-  border-radius: 18px;
   overflow: hidden;
 }
 
-.clock-seconds-svg {
+/* Bezel Periférico SVG */
+.apple-bezel-svg {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   pointer-events: none;
-}
-
-.clock-svg-track {
-  fill: none;
-  stroke: rgba(255, 255, 255, 0.12);
-  stroke-width: 3.5;
-  stroke-linecap: round;
-}
-
-.clock-svg-active {
-  fill: none;
-  stroke: var(--accent-emerald);
-  stroke-width: 4.5;
-  stroke-linecap: round;
-  filter: drop-shadow(0 0 8px rgba(0, 230, 118, 0.9));
-  transition: stroke-dashoffset 0.3s ease;
-}
-
-.clock-time-display {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
   z-index: 2;
 }
 
-.time-digit {
-  font-family: var(--font-main);
-  font-size: 5.6rem;
-  font-weight: 300;
-  line-height: 1;
-  color: #ffffff;
-  letter-spacing: -3px;
-  text-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
+/* Ticks Inativos */
+.apple-tick {
+  stroke: rgba(255, 255, 255, 0.14);
+  transition: stroke 0.15s ease, filter 0.15s ease;
 }
 
-.time-colon {
-  font-size: 4.8rem;
-  color: var(--accent-emerald);
-  line-height: 1;
-  font-weight: 300;
-  margin: 0 2px;
-  transform: translateY(-4px);
-  animation: pulseColon 1s infinite alternate;
+.apple-tick.major {
+  stroke: rgba(255, 255, 255, 0.28);
 }
 
-@keyframes pulseColon {
-  0% { opacity: 0.3; }
-  100% { opacity: 1; }
+/* Ticks Ativos (Iluminados no tom esmeralda Cerberus) */
+.apple-tick.active {
+  stroke: var(--accent-emerald);
 }
 
-.clock-footer-bar {
+.apple-tick.active.major {
+  stroke: #ffffff;
+}
+
+/* Marcador da Ponta (Segundo Atual - Cursor Luminoso) */
+.apple-tick.head {
+  stroke: #ffffff !important;
+  stroke-width: 3px !important;
+  filter: drop-shadow(0 0 6px var(--accent-emerald)) drop-shadow(0 0 2px #ffffff);
+}
+
+/* Conteúdo Interno do Mostrador */
+.apple-dial-content {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  padding: 24px 28px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 3;
+}
+
+/* Topo do Mostrador */
+.apple-dial-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  gap: 10px;
 }
 
-.clock-full-date {
-  font-size: 0.78rem;
-  font-weight: 500;
-  color: var(--text-dim);
-  letter-spacing: 0.3px;
-  white-space: nowrap;
+.apple-dial-date {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: rgba(255, 255, 255, 0.7);
 }
 
-.clock-gpu-pill {
+.apple-live-status {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-family: var(--font-mono);
-  font-size: 0.65rem;
-  color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 3px 8px;
-  border-radius: 4px;
-  white-space: nowrap;
+  gap: 5px;
 }
 
-.gpu-indicator-dot {
-  width: 5px;
-  height: 5px;
+.apple-status-beacon {
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--accent-emerald);
-  box-shadow: 0 0 5px var(--accent-emerald);
+  box-shadow: 0 0 6px var(--accent-emerald);
+}
+
+.apple-status-text {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--accent-emerald);
+}
+
+/* Centro: Hora Monumental */
+.apple-time-display {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: -4px 0;
+}
+
+.apple-digits-wrap {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+}
+
+.apple-digit {
+  font-family: var(--font-main);
+  font-size: 5.2rem;
+  font-weight: 500;
+  line-height: 0.95;
+  color: #ffffff;
+  letter-spacing: -2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.apple-colon {
+  font-size: 4.4rem;
+  color: var(--accent-emerald);
+  line-height: 0.95;
+  font-weight: 300;
+  margin: 0 1px;
+  transform: translateY(-4px);
+  animation: pulseColon 1s infinite alternate;
+}
+
+.apple-seconds-pill {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--accent-emerald);
+  background: rgba(0, 230, 118, 0.12);
+  border: 1px solid rgba(0, 230, 118, 0.3);
+  padding: 3px 7px;
+  border-radius: 6px;
+  letter-spacing: 0.5px;
+}
+
+/* Base: Complications */
+.apple-dial-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.apple-gpu-complication {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.apple-gpu-icon {
+  color: var(--accent-emerald);
+  font-size: 0.7rem;
+}
+
+.apple-system-label {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text-dim);
 }
 
 /* -------------------------------------------------------------------------
