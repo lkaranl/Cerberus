@@ -355,7 +355,9 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // --- 11. Decodificador Universal de Frames (Resiliente a Safari / WebKit) ---
-  let useImageFallback = false;
+  const isWebKit = /^((?!chrome|android).)*safari/i.test(navigator.userAgent) || 
+                   (navigator.userAgent.includes("AppleWebKit") && !navigator.userAgent.includes("Chrome"));
+  let useImageFallback = isWebKit;
 
   function decodeFrameSource(blob) {
     const typedBlob = blob.type === "image/jpeg" ? blob : blob.slice(0, blob.size, "image/jpeg");
