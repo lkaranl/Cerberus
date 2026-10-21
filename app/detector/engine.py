@@ -36,6 +36,7 @@ class YOLODetectorEngine:
         self.is_cuda = self.device.startswith("cuda")
         self.model = None
         self.using_tensorrt = False
+        self.imgsz = 640
 
     def initialize(self) -> None:
         """Carrega o modelo YOLO (TensorRT ou PyTorch) e inicializa reconhecedores."""
@@ -47,21 +48,25 @@ class YOLODetectorEngine:
 
         Path(self.model_path).parent.mkdir(parents=True, exist_ok=True)
 
-        # 1. Tenta carregar a engine compilada do TensorRT (FP16 nativo)
-        target_engine = Path(self.engine_path)
-        # Se yolo11n.engine ainda não foi gerado, aceita yolov8n.engine como transição temporária
+        # 1. Tenta carregar a engine compilada do TensorRT (prioriza HD Nativo 16:9 de alta resolução)
+        hd_engine = Path("models/yolo11n_hd_736x1280.engine")
+        target_engine = hd_engine if hd_engine.exists() else Path(self.engine_path)
         if not target_engine.exists() and Path("models/yolov8n.engine").exists():
             target_engine = Path("models/yolov8n.engine")
 
         if self.is_cuda and settings.use_tensorrt and target_engine.exists():
             try:
-                logger.info(f"⚡ Inicializando YOLO com aceleração máxima TensorRT FP16 [{target_engine}]...")
+                is_hd = ("736x1280" in target_engine.name)
+                self.imgsz = (736, 1280) if is_hd else 640
+                mode_desc = "HD Nativo 16:9 (736x1280)" if is_hd else "Padrão (640x640)"
+                logger.info(f"⚡ Inicializando YOLO com aceleração máxima TensorRT FP16 [{target_engine.name}] em modo {mode_desc}...")
                 self.model = YOLO(str(target_engine), task="detect")
                 self.using_tensorrt = True
                 logger.info(f"🚀 Engine TensorRT ({target_engine.name}) carregada com sucesso na GPU NVIDIA GTX 1660.")
             except Exception as trt_err:
                 logger.warning(f"Falha ao carregar TensorRT ({trt_err}). Revertendo para PyTorch CUDA.")
                 self.using_tensorrt = False
+                self.imgsz = 640
 
         # 2. Fallback para modelo PyTorch (.pt) padrão
         if self.model is None:
@@ -108,6 +113,7 @@ class YOLODetectorEngine:
                 "classes": TARGET_CLASS_IDS,
                 "conf": conf,
                 "iou": iou,
+                "imgsz": self.imgsz,
                 "verbose": False
             }
             if not self.using_tensorrt:
