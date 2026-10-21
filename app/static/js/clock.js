@@ -18,7 +18,7 @@ class AppleModularClock {
     this.meses = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
 
     this.width = 330;
-    this.height = 200;
+    this.height = 175;
     this.tickElements = [];
 
     this.render();
@@ -68,11 +68,11 @@ class AppleModularClock {
             <span class="apple-seconds-pill mono" id="apple-seconds-pill">26</span>
           </div>
 
-          <!-- Base: Complications (GPU & Hardware) -->
+          <!-- Base: Status do Sistema -->
           <div class="apple-dial-footer">
-            <div class="apple-gpu-complication" id="cctv-gpu-tag">
-              <span class="apple-gpu-icon">⚡</span>
-              <span class="apple-gpu-text">GTX 1660 • CUDA</span>
+            <div class="apple-sentry-badge">
+              <span class="apple-sentry-dot"></span>
+              <span class="apple-sentry-text">24/7 ONLINE</span>
             </div>
             <span class="apple-system-label">CERBERUS SENTRY</span>
           </div>

@@ -1,4 +1,6 @@
 import os
+import time
+import json
 import urllib.request
 import urllib.error
 from pathlib import Path
@@ -11,6 +13,8 @@ from app.stream.manager import stream_manager
 from app.storage.database import db
 
 router = APIRouter(prefix="/api", tags=["API"])
+
+_WEATHER_CACHE = {"data": None, "timestamp": 0.0}
 
 
 @router.post("/whep/{camera_id}")
@@ -44,6 +48,133 @@ async def whep_proxy(camera_id: str, request: Request):
             status_code=503,
             detail=f"Gateway WebRTC go2rtc offline ou indisponível: {e}"
         )
+
+
+@router.get("/weather/solar")
+async def get_weather_solar(lat: float = -15.6014, lon: float = -56.0979):
+    """
+    Retorna previsão do tempo e irradiação solar diária (kWh/m²) para hoje e os próximos 3 dias.
+    Permite estimar a geração por metro quadrado de placas solares com base na irradiação global (GHI).
+    Possui cache em memória de 30 minutos.
+    """
+    global _WEATHER_CACHE
+    now = time.time()
+    if _WEATHER_CACHE["data"] and (now - _WEATHER_CACHE["timestamp"] < 1800):
+        return _WEATHER_CACHE["data"]
+
+    url = (
+        f"https://api.open-meteo.com/v1/forecast?"
+        f"latitude={lat}&longitude={lon}&daily=temperature_2m_max,temperature_2m_min,"
+        f"shortwave_radiation_sum,weathercode&current_weather=true&timezone=auto"
+    )
+
+    weather_desc_map = {
+        0: ("Ensolarado", "☀️"),
+        1: ("Céu Aberto", "🌤️"),
+        2: ("Parcialmente Nublado", "⛅"),
+        3: ("Nublado", "☁️"),
+        45: ("Nevoeiro", "🌫️"),
+        48: ("Neblina", "🌫️"),
+        51: ("Garoa Leve", "🌦️"),
+        53: ("Garoa", "🌧️"),
+        55: ("Garoa Densa", "🌧️"),
+        61: ("Chuva Fraca", "🌧️"),
+        63: ("Chuva Moderada", "🌧️"),
+        65: ("Chuva Forte", "🌧️"),
+        80: ("Pancadas Isoladas", "🌦️"),
+        81: ("Pancadas de Chuva", "🌧️"),
+        82: ("Chuva Torrencial", "⛈️"),
+        95: ("Trovoadas", "⛈️"),
+        96: ("Tempestade", "⛈️"),
+    }
+
+    day_labels = ["Hoje", "Amanhã", "Depois"]
+
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Cerberus-Solar-Forecast"})
+        with urllib.request.urlopen(req, timeout=4.0) as resp:
+            raw = json.loads(resp.read().decode("utf-8"))
+
+            daily = raw.get("daily", {})
+            times = daily.get("time", [])
+            max_temps = daily.get("temperature_2m_max", [])
+            min_temps = daily.get("temperature_2m_min", [])
+            radiation_mj = daily.get("shortwave_radiation_sum", [])
+            codes = daily.get("weathercode", [])
+
+            days_forecast = []
+            for i in range(min(3, len(times))):
+                mj = radiation_mj[i] if i < len(radiation_mj) and radiation_mj[i] is not None else 21.0
+                # Conversão física: 1 MJ/m² = 0.27778 kWh/m² (MJ / 3.6)
+                kwh_m2 = round(mj / 3.6, 2)
+                # Estimativa de geração real de painel solar (~20% de eficiência fotovoltaica padrão)
+                est_generation_kwh = round(kwh_m2 * 0.20, 2)
+
+                if kwh_m2 >= 6.0:
+                    potential = "Excelente"
+                    solar_color = "#FFB300"
+                elif kwh_m2 >= 4.5:
+                    potential = "Bom"
+                    solar_color = "#FFA000"
+                elif kwh_m2 >= 3.0:
+                    potential = "Moderado"
+                    solar_color = "#FB8C00"
+                else:
+                    potential = "Baixo"
+                    solar_color = "#90A4AE"
+
+                wcode = codes[i] if i < len(codes) else 0
+                desc, icon = weather_desc_map.get(wcode, ("Céu Aberto", "🌤️"))
+
+                days_forecast.append({
+                    "date": times[i],
+                    "day_index": i,
+                    "day_label": day_labels[i] if i < len(day_labels) else times[i],
+                    "temp_max": round(max_temps[i]) if i < len(max_temps) else 32,
+                    "temp_min": round(min_temps[i]) if i < len(min_temps) else 22,
+                    "radiation_mj": round(mj, 1),
+                    "solar_kwh_m2": kwh_m2,
+                    "est_generation_kwh": est_generation_kwh,
+                    "solar_potential": potential,
+                    "solar_color": solar_color,
+                    "weather_code": wcode,
+                    "weather_desc": desc,
+                    "weather_icon": icon,
+                })
+
+            current = raw.get("current_weather", {})
+            current_code = current.get("weathercode", 0)
+            c_desc, c_icon = weather_desc_map.get(current_code, ("Céu Aberto", "🌤️"))
+
+            result = {
+                "current_temp": round(current.get("temperature", 28)),
+                "current_code": current_code,
+                "current_desc": c_desc,
+                "current_icon": c_icon,
+                "is_day": current.get("is_day", 1),
+                "days": days_forecast,
+                "cached_at": now
+            }
+            _WEATHER_CACHE["data"] = result
+            _WEATHER_CACHE["timestamp"] = now
+            return result
+    except Exception:
+        if _WEATHER_CACHE["data"]:
+            return _WEATHER_CACHE["data"]
+
+        return {
+            "current_temp": 31,
+            "current_code": 0,
+            "current_desc": "Ensolarado",
+            "current_icon": "☀️",
+            "is_day": 1,
+            "days": [
+                {"date": "2026-10-21", "day_index": 0, "day_label": "Hoje", "temp_max": 35, "temp_min": 24, "solar_kwh_m2": 6.4, "est_generation_kwh": 1.28, "solar_potential": "Excelente", "solar_color": "#FFB300", "weather_code": 0, "weather_desc": "Ensolarado", "weather_icon": "☀️"},
+                {"date": "2026-10-22", "day_index": 1, "day_label": "Amanhã", "temp_max": 36, "temp_min": 24, "solar_kwh_m2": 6.1, "est_generation_kwh": 1.22, "solar_potential": "Excelente", "solar_color": "#FFB300", "weather_code": 1, "weather_desc": "Céu Aberto", "weather_icon": "🌤️"},
+                {"date": "2026-10-23", "day_index": 2, "day_label": "Depois", "temp_max": 34, "temp_min": 23, "solar_kwh_m2": 5.2, "est_generation_kwh": 1.04, "solar_potential": "Bom", "solar_color": "#FFA000", "weather_code": 2, "weather_desc": "Parcialmente Nublado", "weather_icon": "⛅"}
+            ],
+            "fallback": True
+        }
 
 
 @router.get("/cameras")

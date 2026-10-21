@@ -110,17 +110,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const res = await fetch("/api/stats");
       if (!res.ok) return;
       const data = await res.json();
-
-      if (dom.gpuTag && data.hardware) {
-        if (data.hardware.name) {
-          const cleanName = data.hardware.name.replace(/NVIDIA\s+/i, "").replace(/GeForce\s+/i, "");
-          const mem = data.hardware.allocated_mb ? ` (${Math.round(data.hardware.allocated_mb)} MB)` : "";
-          const tech = data.hardware.nvdec_active ? "NVDEC ⚡" : (data.hardware.tensorrt_active ? "TRT ⚡" : "CUDA ⚡");
-          dom.gpuTag.textContent = `${cleanName} • ${tech}${mem}`;
-        } else {
-          dom.gpuTag.textContent = "GTX 1660 • CUDA ⚡";
-        }
-      }
+      // Telemetria consumida pelo dashboard; sem injecao no relogio clean
     } catch (e) {}
   }
 

@@ -15,12 +15,19 @@
   <div class="cctv-grid-container" id="cctv-grid">
     <!-- CÂMERAS 1, 2 E 3 INJETADAS DINAMICAMENTE VIA JS -->
 
-    <!-- 4º QUADRANTE: HORÁRIO & RADAR DE PRESENÇA -->
+    <!-- 4º QUADRANTE: HORÁRIO, CLIMA/SOLAR & RADAR DE PRESENÇA -->
     <div class="cctv-quadrant-info" id="quadrant-info">
       
-      <!-- MÓDULO INDEPENDENTE: RELÓGIO CFTV (COM BORDA DE SEGUNDOS) -->
-      <div class="cctv-clock-widget" id="cctv-clock-widget">
-        <!-- Renderizado dinamicamente por /static/js/clock.js -->
+      <div class="quadrant-left-stack">
+        <!-- MÓDULO INDEPENDENTE: RELÓGIO CFTV -->
+        <div class="cctv-clock-widget" id="cctv-clock-widget">
+          <!-- Renderizado dinamicamente por /static/js/clock.js -->
+        </div>
+
+        <!-- MÓDULO INDEPENDENTE: CLIMA & IRRADIAÇÃO SOLAR (3 DIAS) -->
+        <div class="cctv-solar-widget" id="cctv-solar-widget">
+          <!-- Renderizado dinamicamente por /static/js/weather.js -->
+        </div>
       </div>
 
       <!-- RADAR DE PRESENÇA EM TEMPO REAL (LAYOUT VERTICAL OTIMIZADO) -->
@@ -78,8 +85,9 @@
     </div>
   </div>
 
-  <!-- Módulos JavaScript (Relógio Desacoplado + Core da Aplicação) -->
-  <script src="/static/js/clock.js?v=20261021_v6"></script>
+  <!-- Módulos JavaScript (Relógio Desacoplado + Clima/Solar + Core da Aplicação) -->
+  <script src="/static/js/clock.js?v=20261021_v7"></script>
+  <script src="/static/js/weather.js?v=20261021_v1"></script>
   <script src="/static/js/app.js?v=20261021_webrtc_v1"></script>
 </body>
 </html>

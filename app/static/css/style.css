@@ -244,9 +244,19 @@ body.clean-cctv-body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px 24px;
-  gap: 36px;
+  padding: 16px 24px;
+  gap: 32px;
   overflow: hidden;
+}
+
+/* Coluna Esquerda: Relógio Tático + Módulo de Clima/Solar */
+.quadrant-left-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex: 0 0 330px;
 }
 
 /* -------------------------------------------------------------------------
@@ -263,11 +273,11 @@ body.clean-cctv-body {
 .apple-clock-card {
   position: relative;
   width: 330px;
-  height: 200px;
+  height: 175px;
   background: radial-gradient(circle at 50% 30%, rgba(0, 230, 118, 0.05) 0%, rgba(5, 7, 10, 0.95) 100%);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 28px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  border-radius: 24px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.12);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -315,7 +325,7 @@ body.clean-cctv-body {
   position: relative;
   width: 100%;
   height: 100%;
-  padding: 24px 28px;
+  padding: 18px 24px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -333,7 +343,7 @@ body.clean-cctv-body {
 
 .apple-dial-date {
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: 0.70rem;
   font-weight: 700;
   letter-spacing: 1.5px;
   color: rgba(255, 255, 255, 0.7);
@@ -355,7 +365,7 @@ body.clean-cctv-body {
 
 .apple-status-text {
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.66rem;
   font-weight: 700;
   letter-spacing: 1px;
   color: var(--accent-emerald);
@@ -378,7 +388,7 @@ body.clean-cctv-body {
 
 .apple-digit {
   font-family: var(--font-main);
-  font-size: 5.2rem;
+  font-size: 4.8rem;
   font-weight: 500;
   line-height: 0.95;
   color: #ffffff;
@@ -387,7 +397,7 @@ body.clean-cctv-body {
 }
 
 .apple-colon {
-  font-size: 4.4rem;
+  font-size: 4.2rem;
   color: var(--accent-emerald);
   line-height: 0.95;
   font-weight: 300;
@@ -397,17 +407,17 @@ body.clean-cctv-body {
 }
 
 .apple-seconds-pill {
-  font-size: 1.15rem;
+  font-size: 1.10rem;
   font-weight: 700;
   color: var(--accent-emerald);
   background: rgba(0, 230, 118, 0.12);
   border: 1px solid rgba(0, 230, 118, 0.3);
-  padding: 3px 7px;
+  padding: 2px 6px;
   border-radius: 6px;
   letter-spacing: 0.5px;
 }
 
-/* Base: Complications */
+/* Base: Status do Sistema */
 .apple-dial-footer {
   display: flex;
   align-items: center;
@@ -415,22 +425,27 @@ body.clean-cctv-body {
   width: 100%;
 }
 
-.apple-gpu-complication {
+.apple-sentry-badge {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   font-family: var(--font-mono);
-  font-size: 0.64rem;
-  color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--accent-emerald);
+  background: rgba(0, 230, 118, 0.08);
+  border: 1px solid rgba(0, 230, 118, 0.2);
   padding: 2px 7px;
   border-radius: 4px;
+  letter-spacing: 0.5px;
 }
 
-.apple-gpu-icon {
-  color: var(--accent-emerald);
-  font-size: 0.7rem;
+.apple-sentry-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent-emerald);
+  box-shadow: 0 0 6px var(--accent-emerald);
 }
 
 .apple-system-label {
@@ -442,18 +457,255 @@ body.clean-cctv-body {
 }
 
 /* -------------------------------------------------------------------------
+   MÓDULO: CLIMA & PREVISÃO DE IRRADIAÇÃO SOLAR (3 DIAS)
+   ------------------------------------------------------------------------- */
+.cctv-solar-widget {
+  width: 330px;
+  flex: 0 0 auto;
+}
+
+.solar-weather-card {
+  width: 100%;
+  background: radial-gradient(circle at 80% 20%, rgba(255, 179, 0, 0.05) 0%, rgba(8, 10, 15, 0.95) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  padding: 12px 14px 10px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.solar-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.solar-title-group {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.solar-icon-sun {
+  font-size: 1.05rem;
+  filter: drop-shadow(0 0 6px rgba(255, 179, 0, 0.6));
+}
+
+.solar-titles {
+  display: flex;
+  flex-direction: column;
+}
+
+.solar-card-title {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #FFB300;
+}
+
+.solar-card-subtitle {
+  font-family: var(--font-main);
+  font-size: 0.58rem;
+  color: var(--text-dim);
+}
+
+.solar-live-tag {
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.solar-days-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.solar-day-loading {
+  grid-column: span 3;
+  text-align: center;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  padding: 20px 0;
+}
+
+.solar-day-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 8px 6px 7px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.solar-day-card.today-highlight {
+  background: rgba(255, 179, 0, 0.06);
+  border-color: rgba(255, 179, 0, 0.3);
+  box-shadow: 0 0 12px rgba(255, 179, 0, 0.08);
+}
+
+.day-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0 2px 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.day-label {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: 0.5px;
+}
+
+.day-weather-icon {
+  font-size: 0.95rem;
+}
+
+.day-temp-row {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  margin-top: 4px;
+}
+
+.temp-max {
+  font-family: var(--font-main);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.temp-sep {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
+.temp-min {
+  font-family: var(--font-main);
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.day-condition-desc {
+  font-family: var(--font-main);
+  font-size: 0.58rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 82px;
+  margin-bottom: 3px;
+}
+
+.day-solar-divider {
+  width: 80%;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
+  margin: 2px 0 4px;
+}
+
+.solar-metrics-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.solar-val-row {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.solar-kwh-num {
+  font-family: var(--font-mono);
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.solar-kwh-unit {
+  font-family: var(--font-mono);
+  font-size: 0.50rem;
+  color: var(--text-muted);
+}
+
+.solar-power-est {
+  font-family: var(--font-main);
+  font-size: 0.56rem;
+  color: rgba(255, 255, 255, 0.7);
+  margin: 2px 0 4px;
+}
+
+.solar-power-est b {
+  color: #FFB300;
+  font-family: var(--font-mono);
+}
+
+.solar-badge {
+  font-family: var(--font-mono);
+  font-size: 0.52rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.solar-badge.badge-excelente {
+  background: rgba(255, 179, 0, 0.15);
+  color: #FFB300;
+  border: 1px solid rgba(255, 179, 0, 0.35);
+}
+
+.solar-badge.badge-bom {
+  background: rgba(255, 160, 0, 0.12);
+  color: #FFA000;
+  border: 1px solid rgba(255, 160, 0, 0.3);
+}
+
+.solar-badge.badge-moderado {
+  background: rgba(251, 140, 0, 0.12);
+  color: #FB8C00;
+  border: 1px solid rgba(251, 140, 0, 0.3);
+}
+
+.solar-badge.badge-baixo {
+  background: rgba(144, 164, 174, 0.12);
+  color: #90A4AE;
+  border: 1px solid rgba(144, 164, 174, 0.3);
+}
+
+/* -------------------------------------------------------------------------
    WIDGET: RADAR DE PRESENÇA (VERTICAL, MENOS ESPAÇO VAZIO, ÍCONES MAIORES)
    ------------------------------------------------------------------------- */
 .cctv-radar-widget {
   width: 440px;
   max-width: 460px;
-  height: 280px;
+  height: 372px;
   display: flex;
   flex-direction: column;
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  padding: 12px 14px;
+  border-radius: 16px;
+  padding: 14px 16px;
   overflow: hidden;
 }
 
