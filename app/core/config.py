@@ -71,9 +71,9 @@ class Settings(BaseSettings):
     nvdec_device: int = Field(default=0, alias="NVDEC_DEVICE")
 
     # Resolução do Stream Web (Server-Side Streaming)
-    # 1440 = Quad HD (texto e detalhes cristalinos); 0 = resolução nativa sem redimensionamento
-    stream_max_width: int = Field(default=1440, alias="STREAM_MAX_WIDTH")
-    stream_quality: int = Field(default=85, alias="STREAM_QUALITY")
+    # 1280 = 720p HD cristalino calibrado para mosaico 2x2 sem saturação de banda
+    stream_max_width: int = Field(default=1280, alias="STREAM_MAX_WIDTH")
+    stream_quality: int = Field(default=80, alias="STREAM_QUALITY")
 
     # Módulo de Notificação & Bot do Telegram (Bot 1 - Feed Geral / Silencioso)
     telegram_enabled: bool = Field(default=False, alias="TELEGRAM_ENABLED")

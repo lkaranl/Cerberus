@@ -12,8 +12,8 @@ import numpy as np
 from app.core.config import settings
 from app.core.logging import logger
 
-# Força transporte TCP e timeout de 5s para conexões RTSP no OpenCV/FFmpeg
-os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|stimeout;5000000"
+# Força transporte TCP, desativação de áudio (-an), e descarte de pacotes corrompidos no OpenCV/FFmpeg
+os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|stimeout;5000000|an;1|fflags;nobuffer+discardcorrupt|max_delay;500000"
 
 
 class RTSPCapture:
@@ -162,10 +162,13 @@ class RTSPCapture:
                     "-loglevel", "error",
                     "-rtsp_transport", "tcp",
                     "-stimeout", "5000000",
+                    "-max_delay", "500000",
+                    "-reorder_queue_size", "0",
+                    "-an",  # Desativa áudio completamente na fonte para zero overhead
                     "-flags", "low_delay",
-                    "-fflags", "nobuffer",
-                    "-analyzeduration", "1000000",
-                    "-probesize", "1000000",
+                    "-fflags", "+discardcorrupt+nobuffer",  # Descarta pacotes corrompidos, elimina faixas rosa/cinza
+                    "-analyzeduration", "500000",
+                    "-probesize", "500000",
                     "-hwaccel", "cuda",
                     "-hwaccel_device", str(settings.nvdec_device),
                     "-i", self.rtsp_url,
