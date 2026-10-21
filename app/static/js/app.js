@@ -109,10 +109,13 @@ document.addEventListener("DOMContentLoaded", () => {
       const data = await res.json();
 
       if (dom.gpuTag && data.hardware) {
-        if (data.hardware.nvdec_active) {
-          dom.gpuTag.textContent = `GTX 1660 • NVDEC ⚡ (${data.hardware.allocated_mb} MB)`;
+        if (data.hardware.name) {
+          const cleanName = data.hardware.name.replace(/NVIDIA\s+/i, "").replace(/GeForce\s+/i, "");
+          const mem = data.hardware.allocated_mb ? ` (${Math.round(data.hardware.allocated_mb)} MB)` : "";
+          const tech = data.hardware.nvdec_active ? "NVDEC ⚡" : (data.hardware.tensorrt_active ? "TRT ⚡" : "CUDA ⚡");
+          dom.gpuTag.textContent = `${cleanName} • ${tech}${mem}`;
         } else {
-          dom.gpuTag.textContent = `GPU: ${data.hardware.device.toUpperCase()}`;
+          dom.gpuTag.textContent = "GTX 1660 • CUDA ⚡";
         }
       }
     } catch (e) {}
