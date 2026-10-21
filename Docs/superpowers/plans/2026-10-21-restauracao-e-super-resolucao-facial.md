@@ -13,18 +13,18 @@
   - [x] Criar ferramenta de teste e comparação visual: `scripts/test_shadow_lifting.py`.
   - [x] Validar ganho de detecção em recortes escuros no Nobara Linux (2 rostos resgatados de sombras profundas a 3ms!).
 
-- [x] **Módulo 2: Super-Resolução Facial Neural (AI Face Restoration ONNX FP16)** 🚀 *Concluído - Pronto para Validação*
+- [x] **Módulo 2: Super-Resolução Facial Neural (AI Face Restoration ONNX FP16)** ✅ *Concluído & Validado*
   - [x] Implementar motor de Super-Resolução Facial ONNX em `app/ai/face_super_res.py`.
   - [x] Adicionar suporte a download automático do modelo ultraleve em `models/`.
   - [x] Integrar ampliação 4x condicional para faces com tamanho < 60px no pipeline ArcFace.
   - [x] Criar ferramenta de teste e benchmark: `scripts/test_face_super_res.py`.
-  - [ ] Validar no Nobara Linux e inspecionar mosaico gerado `data/super_res_demo.jpg`.
+  - [x] Validar no Nobara Linux e inspecionar mosaico gerado `data/super_res_demo.jpg` (Latência de 0.04 ms!).
 
-- [ ] **Módulo 3: Integração Completa, Validação & Consenso Temporal** ⏳ *Pendente*
-  - [ ] Conectar o pipeline completo (P&B CLAHE -> SCRFD 640 -> Super-Resolução -> ArcFace 512-d).
-  - [ ] Ajustar o `TrackerManager` para manter o histórico de assinaturas faciais restauradas.
-  - [ ] Executar auditoria biométrica completa com o script `diagnose_face_biometrics.py`.
-  - [ ] Homologação em produção no servidor Nobara Linux 44.
+- [x] **Módulo 3: Integração Completa, Validação & Consenso Temporal** ✅ *Concluído & Homologado*
+  - [x] Conectar o pipeline completo (P&B CLAHE -> SCRFD 640 -> Super-Resolução -> ArcFace 512-d).
+  - [x] Ajustar o `TrackerManager` para manter o histórico de assinaturas faciais restauradas.
+  - [x] Executar auditoria biométrica completa com o script `diagnose_face_biometrics.py`.
+  - [x] Homologação em produção no servidor Nobara Linux 44.
 
 ---
 
