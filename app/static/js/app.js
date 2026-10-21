@@ -40,34 +40,7 @@ document.addEventListener("DOMContentLoaded", () => {
     modalEventId: document.getElementById("modal-event-id")
   };
 
-  // --- 1. Relógio Estilo CFTV Minimalista ---
-  function startClock() {
-    const meses = [
-      "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-      "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
-    ];
 
-    function update() {
-      const now = new Date();
-      const h = now.getHours();
-      const m = String(now.getMinutes()).padStart(2, "0");
-
-      if (dom.clock) dom.clock.textContent = `${String(h).padStart(2, "0")}:${m}`;
-
-      if (dom.greeting) {
-        if (h >= 5 && h < 12) dom.greeting.textContent = "BOM DIA";
-        else if (h >= 12 && h < 18) dom.greeting.textContent = "BOA TARDE";
-        else dom.greeting.textContent = "BOA NOITE";
-      }
-
-      if (dom.date) {
-        dom.date.textContent = `${now.getDate()} de ${meses[now.getMonth()]} de ${now.getFullYear()}`;
-      }
-    }
-
-    update();
-    setInterval(update, 1000);
-  }
 
   // --- 2. Decodificador Universal de Frames (Resiliente a Safari / WebKit) ---
   const isWebKit = /^((?!chrome|android).)*safari/i.test(navigator.userAgent) || 
@@ -113,7 +86,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // --- 3. Inicialização Geral ---
   async function init() {
-    startClock();
     setupModalEvents();
 
     await loadSystemStats();

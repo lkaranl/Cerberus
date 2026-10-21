@@ -6,8 +6,8 @@
   <title>Cerberus AI — Central CCTV Clean 2K</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/style.css?v=20261021_v3">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css?v=20261021_v4">
 </head>
 <body class="clean-cctv-body">
 
@@ -18,17 +18,12 @@
     <!-- 4º QUADRANTE: HORÁRIO & RADAR DE PRESENÇA -->
     <div class="cctv-quadrant-info" id="quadrant-info">
       
-      <!-- WIDGET RELÓGIO MINIMALISTA (ESTILO CFTV) -->
-      <div class="cctv-clock-widget">
-        <span class="clock-greeting" id="clock-greeting">BOA TARDE</span>
-        <div class="clock-display-frame">
-          <span class="clock-digits" id="live-clock">--:--</span>
-        </div>
-        <span class="clock-date" id="live-date">Carregando data...</span>
-        <span class="cctv-gpu-tag" id="cctv-gpu-tag">GTX 1660 • NVDEC ⚡</span>
+      <!-- MÓDULO INDEPENDENTE: RELÓGIO CFTV (COM BORDA DE SEGUNDOS) -->
+      <div class="cctv-clock-widget" id="cctv-clock-widget">
+        <!-- Renderizado dinamicamente por /static/js/clock.js -->
       </div>
 
-      <!-- RADAR DE PRESENÇA EM TEMPO REAL -->
+      <!-- RADAR DE PRESENÇA EM TEMPO REAL (LAYOUT VERTICAL OTIMIZADO) -->
       <div class="cctv-radar-widget">
         <div class="radar-header">
           <div class="radar-title-wrap">
@@ -83,6 +78,8 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=20261021_v3"></script>
+  <!-- Módulos JavaScript (Relógio Desacoplado + Core da Aplicação) -->
+  <script src="/static/js/clock.js?v=20261021_v4"></script>
+  <script src="/static/js/app.js?v=20261021_v4"></script>
 </body>
 </html>
