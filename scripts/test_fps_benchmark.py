@@ -25,6 +25,14 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+# Se o script foi chamado fora do virtualenv (.venv), reexecuta automaticamente com o interpretador correto
+VENV_PYTHON = REPO_ROOT / ".venv" / "bin" / "python3"
+if VENV_PYTHON.exists() and sys.executable != str(VENV_PYTHON):
+    try:
+        os.execv(str(VENV_PYTHON), [str(VENV_PYTHON)] + sys.argv)
+    except Exception:
+        pass
+
 # Cores ANSI para terminal
 BOLD = "\033[1m"
 GREEN = "\033[38;2;118;230;0m"
@@ -43,7 +51,13 @@ def test_camera_native_fps(cam_name: str, rtsp_url: str, duration_sec: float = 4
     Conecta diretamente ao stream RTSP da câmera e conta o FPS real do sensor.
     Isso identifica se a câmera está configurada para 15 FPS ou 25 FPS no app Tapo.
     """
-    import cv2
+    try:
+        import cv2
+    except ImportError:
+        print(f"  {YELLOW}⚠️ Módulo cv2 (OpenCV) não disponível neste ambiente Python.{RESET}")
+        print(f"     Execute com o virtualenv ativo: {BOLD}source .venv/bin/activate{RESET} ou {BOLD}.venv/bin/python3 scripts/test_fps_benchmark.py{RESET}")
+        return 0.0, (0, 0)
+
     print(f"  🔍 Analisando taxa de quadros física de: {BOLD}{cam_name}{RESET}...")
     
     t0 = time.time()
