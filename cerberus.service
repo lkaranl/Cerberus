@@ -1,8 +1,8 @@
 [Unit]
 Description=Cerberus (Sentinela Vision) - Servico de Monitoramento e IA 24/7
-# Inicia apenas apos a rede local e resolucao de nomes estarem disponiveis
-After=network-online.target
-Wants=network-online.target
+# Inicia apos a rede e o worker especialista AMD estarem prontos
+After=network-online.target cerberus-worker-amd.service
+Wants=network-online.target cerberus-worker-amd.service
 
 [Service]
 # --- Tipo de Servico ---

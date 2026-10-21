@@ -1,0 +1,22 @@
+[Unit]
+Description=Cerberus AMD Specialist Worker (Radeon RX 5600 XT) - Microsservico de IA por Demanda
+After=network.target
+
+[Service]
+Type=simple
+User=secundario
+Group=secundario
+WorkingDirectory=/home/secundario/Documentos/Cerberus
+Environment="PATH=/home/secundario/Documentos/Cerberus/.venv/bin:/usr/local/bin:/usr/bin"
+Environment="PYTHONUNBUFFERED=1"
+Environment="HSA_OVERRIDE_GFX_VERSION=10.3.0"
+ExecStart=/home/secundario/Documentos/Cerberus/.venv/bin/python3 app/worker_amd/server.py
+Restart=always
+RestartSec=5s
+LimitNOFILE=65535
+SyslogIdentifier=cerberus-amd
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

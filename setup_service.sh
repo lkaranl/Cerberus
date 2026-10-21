@@ -40,14 +40,16 @@ echo -e "👤 Usuário do serviço:   ${YELLOW}$REAL_USER ($REAL_GROUP)${NC}"
 echo -e "🐍 Executável Python:     ${YELLOW}$PYTHON_BIN${NC}"
 
 SERVICE_FILE="/etc/systemd/system/cerberus.service"
+WORKER_SERVICE_FILE="/etc/systemd/system/cerberus-worker-amd.service"
 TEMP_SERVICE="$(mktemp)"
+TEMP_WORKER_SERVICE="$(mktemp)"
 
-# Gera o conteúdo do serviço adaptado ao ambiente atual
+# 1. Gera o conteúdo do serviço principal (NVIDIA / Web / Câmeras)
 cat <<EOF > "$TEMP_SERVICE"
 [Unit]
 Description=Cerberus (Sentinela Vision) - Servico de Monitoramento e IA 24/7
-After=network-online.target
-Wants=network-online.target
+After=network-online.target cerberus-worker-amd.service
+Wants=network-online.target cerberus-worker-amd.service
 
 [Service]
 Type=simple
@@ -70,46 +72,80 @@ StandardError=journal
 WantedBy=multi-user.target
 EOF
 
-# Atualiza também o arquivo local cerberus.service para referência
-cp "$TEMP_SERVICE" "$REPO_DIR/cerberus.service"
+# 2. Gera o conteúdo do microsserviço especialista (AMD Radeon RX 5600 XT)
+cat <<EOF > "$TEMP_WORKER_SERVICE"
+[Unit]
+Description=Cerberus AMD Specialist Worker (Radeon RX 5600 XT) - Microsservico de IA por Demanda
+After=network.target
 
-echo -e "\n📋 Copiando arquivo de serviço para ${YELLOW}$SERVICE_FILE${NC}..."
+[Service]
+Type=simple
+User=$REAL_USER
+Group=$REAL_GROUP
+WorkingDirectory=$REPO_DIR
+Environment="PATH=$ENV_PATH"
+Environment="PYTHONUNBUFFERED=1"
+Environment="HSA_OVERRIDE_GFX_VERSION=10.3.0"
+ExecStart=$PYTHON_BIN app/worker_amd/server.py
+Restart=always
+RestartSec=5s
+LimitNOFILE=65535
+SyslogIdentifier=cerberus-amd
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Atualiza também os arquivos locais para referência
+cp "$TEMP_SERVICE" "$REPO_DIR/cerberus.service"
+cp "$TEMP_WORKER_SERVICE" "$REPO_DIR/cerberus-worker-amd.service"
+
+echo -e "\n📋 Copiando arquivos de serviço para o systemd..."
 
 # Copia para o systemd (solicita sudo se necessário)
 if [ "$EUID" -ne 0 ]; then
     sudo cp "$TEMP_SERVICE" "$SERVICE_FILE"
     sudo chmod 644 "$SERVICE_FILE"
-    rm -f "$TEMP_SERVICE"
+    sudo cp "$TEMP_WORKER_SERVICE" "$WORKER_SERVICE_FILE"
+    sudo chmod 644 "$WORKER_SERVICE_FILE"
+    rm -f "$TEMP_SERVICE" "$TEMP_WORKER_SERVICE"
 
     echo -e "🔄 Recarregando configurações do systemd..."
     sudo systemctl daemon-reload
 
     echo -e "⚡ Habilitando inicialização automática no boot..."
+    sudo systemctl enable cerberus-worker-amd.service
     sudo systemctl enable cerberus.service
 
-    echo -e "🚀 Iniciando o serviço Cerberus..."
+    echo -e "🚀 Iniciando os serviços Dual-GPU..."
+    sudo systemctl restart cerberus-worker-amd.service
     sudo systemctl restart cerberus.service
 else
     cp "$TEMP_SERVICE" "$SERVICE_FILE"
     chmod 644 "$SERVICE_FILE"
-    rm -f "$TEMP_SERVICE"
+    cp "$TEMP_WORKER_SERVICE" "$WORKER_SERVICE_FILE"
+    chmod 644 "$WORKER_SERVICE_FILE"
+    rm -f "$TEMP_SERVICE" "$TEMP_WORKER_SERVICE"
 
     echo -e "🔄 Recarregando configurações do systemd..."
     systemctl daemon-reload
 
     echo -e "⚡ Habilitando inicialização automática no boot..."
+    systemctl enable cerberus-worker-amd.service
     systemctl enable cerberus.service
 
-    echo -e "🚀 Iniciando o serviço Cerberus..."
+    echo -e "🚀 Iniciando os serviços Dual-GPU..."
+    systemctl restart cerberus-worker-amd.service
     systemctl restart cerberus.service
 fi
 
 echo -e "⏳ Aguardando verificação de integridade..."
 sleep 2.5
 
-# Verifica se o serviço está ativo e rodando sem erros
+# Verifica se os serviços estão ativos e rodando sem erros
 if systemctl is-active --quiet cerberus; then
-    # Detecta o IP real da máquina na rede local
     SERVER_IP=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{print $7}' | head -n 1)
     if [ -z "$SERVER_IP" ]; then
         SERVER_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
@@ -119,15 +155,17 @@ if systemctl is-active --quiet cerberus; then
     fi
 
     echo -e "\n${GREEN}======================================================${NC}"
-    echo -e "${GREEN}  ✓ Serviço Cerberus iniciado com sucesso e rodando!  ${NC}"
+    echo -e "${GREEN}  ✓ Serviços Dual-GPU iniciados com sucesso!           ${NC}"
     echo -e "${GREEN}======================================================${NC}"
     echo -e "🌐 Acesse no navegador:"
     echo -e "   • Monitoramento: ${CYAN}http://${SERVER_IP}:8095${NC}"
-    echo -e "   • Dashboard:     ${CYAN}http://${SERVER_IP}:8095/dashboard${NC}\n"
+    echo -e "   • Dashboard:     ${CYAN}http://${SERVER_IP}:8095/dashboard${NC}"
+    echo -e "   • Worker AMD:    ${CYAN}http://127.0.0.1:8001/health${NC}\n"
     echo -e "📜 Comandos úteis:"
-    echo -e "   • Ver status:    systemctl status cerberus"
-    echo -e "   • Acompanhar log: journalctl -u cerberus -f"
-    echo -e "   • Parar serviço: sudo systemctl stop cerberus\n"
+    echo -e "   • Status Cerberus:   systemctl status cerberus"
+    echo -e "   • Status Worker AMD: systemctl status cerberus-worker-amd"
+    echo -e "   • Logs Cerberus:     journalctl -u cerberus -f"
+    echo -e "   • Logs Worker AMD:   journalctl -u cerberus-worker-amd -f\n"
 else
     echo -e "\n${RED}======================================================${NC}"
     echo -e "${RED}  ✗ O serviço falhou ao iniciar. Verifique os logs:   ${NC}"
