@@ -1,7 +1,14 @@
 /**
- * Sentinela Vision - Frontend Application
- * Suporte a WebSockets de baixa latência, renderização Canvas de alta performance,
- * alternância de visualização Grid / Single View e feed de alertas em tempo real.
+ * Sentinela Vision / Cerberus AI - Frontend Command Center Application
+ * 
+ * Funcionalidades:
+ * - Central de Comando Tático em tela cheia com glassmorphism de alta fidelidade
+ * - WebSockets binários de ultrabaixa latência (zero-lag adaptativo)
+ * - HUD Tático Flutuante sobre os streams de câmeras 2K (Snapshot instantâneo, Tela Cheia)
+ * - Drawer lateral retrátil com histórico persistente no localStorage
+ * - Timeline inteligente com filtros rápidos em chips e contadores em tempo real
+ * - Bordas reativas dinâmicas nas câmeras conforme tipo de detecção (Morador, Invasor, Veículo)
+ * - Modal tático de evidências biométricas lado a lado (Crop e Cena Completa 2K)
  */
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -11,7 +18,11 @@ document.addEventListener("DOMContentLoaded", () => {
     wsConnections: {}, // camera_id -> WebSocket
     eventsWs: null,
     eventsCount: 0,
-    statsInterval: null
+    eventsData: [], // Armazena objetos de eventos recentes para contagem e filtros rápidos
+    currentFilter: "all", // "all", "residents", "unknowns", "vehicles", "pets"
+    isDrawerCollapsed: false,
+    statsInterval: null,
+    activeModalEventId: null
   };
 
   // Elementos do DOM
@@ -19,9 +30,17 @@ document.addEventListener("DOMContentLoaded", () => {
     clock: document.getElementById("live-clock"),
     hardwareLabel: document.getElementById("hardware-label"),
     camsActiveLabel: document.getElementById("cams-active-label"),
+    mainLayout: document.getElementById("main-layout"),
+    btnToggleDrawer: document.getElementById("btn-toggle-drawer"),
     videoContainer: document.getElementById("video-container"),
     singleSelectors: document.getElementById("single-selectors"),
     btnGrid: document.getElementById("btn-grid"),
+    filterChips: document.querySelectorAll("#filter-chips .filter-chip"),
+    countAll: document.getElementById("count-all"),
+    countResidents: document.getElementById("count-residents"),
+    countUnknowns: document.getElementById("count-unknowns"),
+    countVehicles: document.getElementById("count-vehicles"),
+    countPets: document.getElementById("count-pets"),
     eventsList: document.getElementById("events-list"),
     eventsEmpty: document.getElementById("events-empty"),
     eventsBadge: document.getElementById("events-count-badge"),
@@ -40,22 +59,46 @@ document.addEventListener("DOMContentLoaded", () => {
     modalEventId: document.getElementById("modal-event-id")
   };
 
-  // --- Relógio ao Vivo ---
+  // --- 1. Relógio Tático ao Vivo ---
   function startClock() {
     function update() {
       const now = new Date();
-      dom.clock.textContent = now.toLocaleTimeString("pt-BR", { hour12: false });
+      if (dom.clock) {
+        dom.clock.textContent = now.toLocaleTimeString("pt-BR", { hour12: false });
+      }
     }
     update();
     setInterval(update, 1000);
   }
 
-  // --- Inicialização ---
+  // --- 2. Controle do Drawer Retrátil Lateral ---
+  function setupDrawer() {
+    // Recupera estado anterior salvo no navegador
+    const savedState = localStorage.getItem("cerberus_drawer_collapsed");
+    if (savedState === "true") {
+      state.isDrawerCollapsed = true;
+      if (dom.mainLayout) dom.mainLayout.classList.add("drawer-collapsed");
+    }
+
+    if (dom.btnToggleDrawer) {
+      dom.btnToggleDrawer.addEventListener("click", () => {
+        state.isDrawerCollapsed = !state.isDrawerCollapsed;
+        if (dom.mainLayout) {
+          dom.mainLayout.classList.toggle("drawer-collapsed", state.isDrawerCollapsed);
+        }
+        localStorage.setItem("cerberus_drawer_collapsed", state.isDrawerCollapsed);
+      });
+    }
+  }
+
+  // --- 3. Inicialização Geral ---
   async function init() {
     startClock();
+    setupDrawer();
     setupModalEvents();
     setupViewSwitching();
     setupClearScreen();
+    setupFilterChips();
 
     await loadSystemStats();
     await loadCameras();
@@ -63,27 +106,27 @@ document.addEventListener("DOMContentLoaded", () => {
 
     connectEventsWebSocket();
 
-    // Atualiza status e estatísticas a cada 4 segundos
+    // Atualiza status e telemetria a cada 4 segundos
     state.statsInterval = setInterval(() => {
       loadSystemStats();
       refreshCameraTelemetry();
     }, 4000);
   }
 
-  // --- Carregar Estatísticas do Sistema ---
+  // --- 4. Carregar Estatísticas do Sistema e GPU ---
   async function loadSystemStats() {
     try {
       const res = await fetch("/api/stats");
       if (!res.ok) return;
       const data = await res.json();
 
-      if (data.hardware) {
+      if (dom.hardwareLabel && data.hardware) {
         if (data.hardware.nvdec_active && data.hardware.yolo_tensorrt && data.hardware.facenet_tensorrt) {
-          dom.hardwareLabel.textContent = `NVIDIA GTX 1660 [NVDEC + YOLO + FaceNet TRT ⚡] (${data.hardware.allocated_mb} MB)`;
+          dom.hardwareLabel.textContent = `GTX 1660 [NVDEC + YOLO + FaceNet TRT ⚡] (${data.hardware.allocated_mb} MB)`;
         } else if (data.hardware.yolo_tensorrt && data.hardware.facenet_tensorrt) {
-          dom.hardwareLabel.textContent = `NVIDIA GTX 1660 [YOLO + FaceNet TRT ⚡] (${data.hardware.allocated_mb} MB)`;
+          dom.hardwareLabel.textContent = `GTX 1660 [YOLO + FaceNet TRT ⚡] (${data.hardware.allocated_mb} MB)`;
         } else if (data.hardware.tensorrt_active) {
-          dom.hardwareLabel.textContent = `NVIDIA GTX 1660 [TensorRT FP16 ⚡] (${data.hardware.allocated_mb} MB)`;
+          dom.hardwareLabel.textContent = `GTX 1660 [TensorRT FP16 ⚡] (${data.hardware.allocated_mb} MB)`;
         } else if (data.hardware.type && data.hardware.type.includes("CUDA")) {
           dom.hardwareLabel.textContent = `NVIDIA GTX 1660 (${data.hardware.allocated_mb} MB VRAM)`;
         } else if (data.hardware.type && data.hardware.type.includes("Metal")) {
@@ -93,13 +136,15 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
 
-      dom.camsActiveLabel.textContent = `${data.cameras_active || 0} ativas`;
+      if (dom.camsActiveLabel) {
+        dom.camsActiveLabel.textContent = `${data.cameras_active || 0} Ativas (2K 25 FPS)`;
+      }
     } catch (err) {
       console.warn("Falha ao obter stats do sistema:", err);
     }
   }
 
-  // --- Carregar Câmeras e Configurar Grid ---
+  // --- 5. Carregar Câmeras e Configurar Grid ---
   async function loadCameras() {
     try {
       const res = await fetch("/api/cameras");
@@ -114,13 +159,14 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // --- Renderizar Botões de Seleção de Câmeras ---
+  // --- 6. Renderizar Botões de Seleção de Câmeras ---
   function renderViewButtons() {
+    if (!dom.singleSelectors) return;
     dom.singleSelectors.innerHTML = "";
 
     state.cameras.forEach(cam => {
       const btn = document.createElement("button");
-      btn.className = "view-btn";
+      btn.className = "view-pill";
       btn.dataset.view = cam.id;
       btn.innerHTML = `
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -134,56 +180,37 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // --- Configurar Alternância de Visualização ---
+  // --- 7. Configurar Alternância de Visualização (Grid vs Single) ---
   function setupViewSwitching() {
-    dom.btnGrid.addEventListener("click", () => switchView("grid"));
-  }
-
-  // --- Limpar Alertas da Tela (Mantém no Banco de Dados) ---
-  function setupClearScreen() {
-    if (dom.btnClearScreen) {
-      dom.btnClearScreen.addEventListener("click", () => {
-        dom.eventsList.innerHTML = `
-          <div class="events-empty-state" id="events-empty">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
-              <circle cx="9" cy="7" r="4"/>
-              <line x1="19" y1="8" x2="19" y2="14"/>
-              <line x1="22" y1="11" x2="16" y2="11"/>
-            </svg>
-            <p>Tela limpa.</p>
-            <span>Novas detecções em tempo real continuarão aparecendo aqui.</span>
-          </div>
-        `;
-        state.eventsCount = 0;
-        dom.eventsBadge.textContent = "0";
-      });
+    if (dom.btnGrid) {
+      dom.btnGrid.addEventListener("click", () => switchView("grid"));
     }
   }
 
   function switchView(viewId) {
     state.currentView = viewId;
 
-    // Atualiza classes ativas nos botões
-    document.querySelectorAll(".view-btn").forEach(btn => {
+    // Atualiza classes ativas nos pills
+    document.querySelectorAll(".view-pill").forEach(btn => {
       btn.classList.toggle("active", btn.dataset.view === viewId);
     });
 
     if (viewId === "grid") {
-      dom.videoContainer.className = "video-grid-container mode-grid";
+      dom.videoContainer.className = "tactical-grid-viewport mode-grid";
       document.querySelectorAll(".camera-card").forEach(card => {
         card.style.display = "flex";
       });
     } else {
-      dom.videoContainer.className = "video-grid-container mode-single";
+      dom.videoContainer.className = "tactical-grid-viewport mode-single";
       document.querySelectorAll(".camera-card").forEach(card => {
         card.style.display = (card.dataset.camId === viewId) ? "flex" : "none";
       });
     }
   }
 
-  // --- Renderizar Cards de Câmeras ---
+  // --- 8. Renderizar Cards de Câmeras com HUD Tático ---
   function renderCameraCards() {
+    if (!dom.videoContainer) return;
     dom.videoContainer.innerHTML = "";
 
     state.cameras.forEach(cam => {
@@ -206,36 +233,128 @@ document.addEventListener("DOMContentLoaded", () => {
           </div>
         </div>
 
-        <div class="video-viewport">
+        <div class="video-viewport" id="viewport-${cam.id}">
           <div class="video-placeholder" id="placeholder-${cam.id}">
             <div class="spinner"></div>
-            <span>Conectando ao stream RTSP...</span>
+            <span>Conectando ao stream RTSP 2K...</span>
           </div>
           <canvas class="video-canvas" id="canvas-${cam.id}"></canvas>
 
-          <div class="video-overlay-bottom">
-            <div class="cam-overlay-tag">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/>
-                <polyline points="12 6 12 12 16 14"/>
-              </svg>
-              ${cam.id}
+          <!-- HUD Tático Superior (Resolução 2K + Aceleração) -->
+          <div class="cam-hud-overlay-top">
+            <span class="hud-tag-resolution">2K QHD • 25 FPS</span>
+            <span class="hud-tag-resolution" style="border-color: rgba(16, 185, 129, 0.4); color: var(--accent-emerald);">NVDEC ⚡</span>
+          </div>
+
+          <!-- HUD Tático Inferior (Ações Rápidas no Hover) -->
+          <div class="cam-hud-overlay-bottom">
+            <div class="hud-actions-left">
+              <div class="cam-overlay-tag">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <polyline points="12 6 12 12 16 14"/>
+                </svg>
+                ${cam.name || cam.id}
+              </div>
+              <div class="cam-overlay-tag detection-badge" id="det-tag-${cam.id}" style="display: none;">
+                ● Atividade
+              </div>
             </div>
-            <div class="cam-overlay-tag detection-badge" id="det-tag-${cam.id}" style="display: none;">
-              ● Detectado
+
+            <div class="hud-actions-right">
+              <button class="btn-hud-tool" id="btn-snapshot-${cam.id}" title="Capturar frame 2K instantâneo">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                  <circle cx="12" cy="13" r="4"/>
+                </svg>
+                Snapshot
+              </button>
+              <button class="btn-hud-tool" id="btn-fullscreen-${cam.id}" title="Expandir câmera em tela cheia">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="15 3 21 3 21 9"/>
+                  <polyline points="9 21 3 21 3 15"/>
+                  <line x1="21" y1="3" x2="14" y2="10"/>
+                  <line x1="3" y1="21" x2="10" y2="14"/>
+                </svg>
+                Tela Cheia
+              </button>
             </div>
           </div>
         </div>
       `;
 
       dom.videoContainer.appendChild(card);
+
+      // Listeners do HUD da Câmera
+      const btnSnap = card.querySelector(`#btn-snapshot-${cam.id}`);
+      if (btnSnap) {
+        btnSnap.addEventListener("click", (e) => {
+          e.stopPropagation();
+          takeCameraSnapshot(cam.id, cam.name);
+        });
+      }
+
+      const btnFull = card.querySelector(`#btn-fullscreen-${cam.id}`);
+      if (btnFull) {
+        btnFull.addEventListener("click", (e) => {
+          e.stopPropagation();
+          toggleCameraFullscreen(card);
+        });
+      }
     });
 
-    dom.videoContainer.className = "video-grid-container mode-grid";
+    dom.videoContainer.className = "tactical-grid-viewport mode-grid";
   }
 
-  // --- Conectar Stream de Câmera via WebSocket Binário ---
-  // --- Conectar Stream de Câmera via WebSocket Binário com Pacing Adaptativo ---
+  // --- 9. Ferramenta de Snapshot 2K Instantâneo ---
+  function takeCameraSnapshot(camId, camName) {
+    const canvas = document.getElementById(`canvas-${camId}`);
+    if (!canvas || canvas.width === 0) {
+      console.warn(`Canvas de ${camId} ainda não possui frames renderizados.`);
+      return;
+    }
+
+    const btn = document.getElementById(`btn-snapshot-${camId}`);
+    const origHtml = btn ? btn.innerHTML : "";
+    if (btn) btn.innerHTML = `✓ Salvo!`;
+
+    try {
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.95);
+      const link = document.createElement("a");
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const safeName = (camName || camId).toLowerCase().replace(/[^a-z0-9]/g, "_");
+      link.download = `cerberus_${safeName}_${timestamp}.jpg`;
+      link.href = dataUrl;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error("Erro ao gerar snapshot 2K:", err);
+    }
+
+    if (btn) {
+      setTimeout(() => {
+        btn.innerHTML = origHtml;
+      }, 1500);
+    }
+  }
+
+  // --- 10. Ferramenta de Tela Cheia Tática (Fullscreen) ---
+  function toggleCameraFullscreen(cardElement) {
+    if (!document.fullscreenElement) {
+      if (cardElement.requestFullscreen) {
+        cardElement.requestFullscreen();
+      } else if (cardElement.webkitRequestFullscreen) {
+        cardElement.webkitRequestFullscreen();
+      }
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      }
+    }
+  }
+
+  // --- 11. Conectar Stream de Câmera via WebSocket Binário ---
   function connectCameraStream(camId) {
     if (state.wsConnections[camId]) {
       try { 
@@ -255,10 +374,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     let frameCount = 0;
     let fpsTimer = performance.now();
-    let firstFrame = true;
 
     ws.onopen = () => {
-      // Solicita frame inicial ao abrir a conexão
       if (ws.readyState === WebSocket.OPEN) {
         ws.send("next");
       }
@@ -267,10 +384,8 @@ document.addEventListener("DOMContentLoaded", () => {
     ws.onmessage = async (event) => {
       if (!ctx || !(event.data instanceof Blob)) return;
 
-      // Se a aba estiver em segundo plano, não processa nem solicita novos frames
-      if (document.hidden) {
-        return;
-      }
+      // Se a aba estiver oculta em segundo plano, não processa o frame
+      if (document.hidden) return;
 
       try {
         const imageBitmap = await createImageBitmap(event.data);
@@ -285,7 +400,7 @@ document.addEventListener("DOMContentLoaded", () => {
         ctx.drawImage(imageBitmap, 0, 0, canvas.width, canvas.height);
         imageBitmap.close();
 
-        // Sinaliza ao servidor que este frame foi desenhado e solicita o próximo frame em tempo real
+        // Solicita próximo frame ao backend de streaming
         if (ws.readyState === WebSocket.OPEN && !document.hidden) {
           ws.send("next");
         }
@@ -315,7 +430,6 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     ws.onclose = () => {
-      // Reconecta apenas se a aba estiver ativa em primeiro plano
       if (!document.hidden && state.cameras.some(c => c.id === camId)) {
         const statusEl = document.getElementById(`status-pill-${camId}`);
         if (statusEl) {
@@ -336,7 +450,7 @@ document.addEventListener("DOMContentLoaded", () => {
       try {
         const ws = state.wsConnections[camId];
         if (ws) {
-          ws.onclose = null; // Evita loop de reconexão enquanto estiver oculta
+          ws.onclose = null;
           ws.close();
         }
       } catch (e) {}
@@ -350,20 +464,18 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // --- Sincronização Estrita ao Alternar Abas (Zero Latência) ---
+  // --- 12. Sincronização Inteligente de Abas (Zero Buffer Acumulado) ---
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") {
-      // Usuário retornou à página: restabelece conexões para obter o frame do segundo atual
       connectAllCameraStreams();
       loadSystemStats();
       refreshCameraTelemetry();
     } else {
-      // Usuário saiu da aba: suspende streams pesados de vídeo para evitar buffering acumulado
       disconnectAllCameraStreams();
     }
   });
 
-  // --- Atualizar Telemetria das Câmeras ---
+  // --- 13. Atualizar Telemetria das Câmeras ---
   async function refreshCameraTelemetry() {
     try {
       const res = await fetch("/api/cameras");
@@ -379,7 +491,6 @@ document.addEventListener("DOMContentLoaded", () => {
               statusEl.className = "cam-status-pill online";
               statusEl.innerHTML = `<span class="chip-dot glow-green"></span> ONLINE`;
             }
-            // Se a câmera está conectada no servidor mas o websocket local caiu, restabelece
             const ws = state.wsConnections[cam.id];
             if (!document.hidden && (!ws || ws.readyState === WebSocket.CLOSED)) {
               connectCameraStream(cam.id);
@@ -394,7 +505,67 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (e) {}
   }
 
-  // --- Carregar Histórico Inicial de Eventos ---
+  // --- 14. Filtros Rápidos em Chips na Timeline ---
+  function setupFilterChips() {
+    if (!dom.filterChips) return;
+    dom.filterChips.forEach(chip => {
+      chip.addEventListener("click", () => {
+        const filter = chip.dataset.filter || "all";
+        applyTimelineFilter(filter);
+      });
+    });
+  }
+
+  function applyTimelineFilter(filter) {
+    state.currentFilter = filter;
+
+    // Atualiza botões
+    dom.filterChips.forEach(chip => {
+      chip.classList.toggle("active", chip.dataset.filter === filter);
+    });
+
+    // Filtra cards existentes na timeline
+    const cards = dom.eventsList.querySelectorAll(".event-card");
+    cards.forEach(card => {
+      const cat = card.dataset.category;
+      if (filter === "all" || cat === filter) {
+        card.style.display = "flex";
+      } else {
+        card.style.display = "none";
+      }
+    });
+  }
+
+  function getCategoryForEvent(evt) {
+    if (evt.entity_type === "vehicle") return "vehicles";
+    if (evt.entity_type === "pet") return "pets";
+    if (evt.is_known) return "residents";
+    return "unknowns";
+  }
+
+  function updateFilterCounters() {
+    let all = state.eventsData.length;
+    let residents = 0;
+    let unknowns = 0;
+    let vehicles = 0;
+    let pets = 0;
+
+    state.eventsData.forEach(evt => {
+      const cat = getCategoryForEvent(evt);
+      if (cat === "residents") residents++;
+      else if (cat === "unknowns") unknowns++;
+      else if (cat === "vehicles") vehicles++;
+      else if (cat === "pets") pets++;
+    });
+
+    if (dom.countAll) dom.countAll.textContent = all;
+    if (dom.countResidents) dom.countResidents.textContent = residents;
+    if (dom.countUnknowns) dom.countUnknowns.textContent = unknowns;
+    if (dom.countVehicles) dom.countVehicles.textContent = vehicles;
+    if (dom.countPets) dom.countPets.textContent = pets;
+  }
+
+  // --- 15. Carregar Histórico Inicial de Eventos ---
   async function loadRecentEvents() {
     try {
       const res = await fetch("/api/events?limit=30");
@@ -403,19 +574,25 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (data.events && data.events.length > 0) {
         if (dom.eventsEmpty) dom.eventsEmpty.remove();
+        state.eventsData = data.events;
         state.eventsCount = data.total || data.events.length;
-        dom.eventsBadge.textContent = state.eventsCount;
+        if (dom.eventsBadge) dom.eventsBadge.textContent = state.eventsCount;
+
+        updateFilterCounters();
 
         data.events.forEach(evt => {
           renderEventCard(evt, false);
         });
+
+        // Aplica o filtro atual aos cards carregados
+        applyTimelineFilter(state.currentFilter);
       }
     } catch (err) {
       console.warn("Falha ao carregar eventos:", err);
     }
   }
 
-  // --- Conectar Canal de Eventos em Tempo Real ---
+  // --- 16. Conectar Canal de Eventos em Tempo Real ---
   function connectEventsWebSocket() {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${protocol}//${window.location.host}/ws/events`;
@@ -425,15 +602,22 @@ document.addEventListener("DOMContentLoaded", () => {
       try {
         const payload = JSON.parse(event.data);
         if (payload.type === "PERSON_DETECTED" && payload.data) {
+          const evt = payload.data;
           state.eventsCount++;
-          dom.eventsBadge.textContent = state.eventsCount;
+          if (dom.eventsBadge) dom.eventsBadge.textContent = state.eventsCount;
 
           if (dom.eventsEmpty && dom.eventsEmpty.parentNode) {
             dom.eventsEmpty.remove();
           }
 
-          renderEventCard(payload.data, true);
-          flashDetectionBadge(payload.data.camera_id);
+          // Adiciona no topo do histórico
+          state.eventsData.unshift(evt);
+          if (state.eventsData.length > 50) state.eventsData.pop();
+          updateFilterCounters();
+
+          renderEventCard(evt, true);
+          flashDetectionBadge(evt.camera_id);
+          triggerCameraAlert(evt.camera_id, evt.entity_type, evt.is_known);
         } else if (payload.type === "EVENT_UPDATED" && payload.data) {
           updateEventCard(payload.data);
         }
@@ -449,6 +633,27 @@ document.addEventListener("DOMContentLoaded", () => {
     state.eventsWs = ws;
   }
 
+  // --- 17. Reatividade Visual de Borda nas Câmeras (Glow Tático) ---
+  function triggerCameraAlert(camId, entityType, isKnown) {
+    const card = document.querySelector(`.camera-card[data-cam-id="${camId}"]`);
+    if (!card) return;
+
+    let alertClass = "camera-card--alert";
+    if (entityType === "vehicle") {
+      alertClass = "camera-card--vehicle";
+    } else if (isKnown) {
+      alertClass = "camera-card--resident";
+    }
+
+    card.classList.remove("camera-card--resident", "camera-card--alert", "camera-card--vehicle");
+    card.classList.add(alertClass);
+
+    if (card._alertTimeout) clearTimeout(card._alertTimeout);
+    card._alertTimeout = setTimeout(() => {
+      card.classList.remove(alertClass);
+    }, 4500);
+  }
+
   function flashDetectionBadge(camId) {
     const tag = document.getElementById(`det-tag-${camId}`);
     if (tag) {
@@ -459,13 +664,17 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // --- Atualizar Card Existente ao Capturar Rosto / Identidade em Tempo Real ---
+  // --- 18. Atualizar Card Existente ao Reconhecer Rosto ---
   function updateEventCard(evt) {
     const eventId = evt.event_id || evt.id;
     const card = document.getElementById(`event-card-${eventId}`);
     if (!card) return;
 
-    // Atualiza imagem do thumbnail com cache-buster para exibir o rosto imediatamente
+    // Atualiza categoria no dataset
+    const newCategory = getCategoryForEvent(evt);
+    card.dataset.category = newCategory;
+
+    // Atualiza thumbnail com cache-buster
     const img = card.querySelector(".event-thumb");
     if (img) {
       img.src = `/api/events/${eventId}/crop?t=${Date.now()}`;
@@ -475,7 +684,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const badge = card.querySelector(".event-id-badge");
     if (badge) {
       let typeIcon = "👤";
-      let badgeStyle = "background: var(--accent-green-dim); color: var(--accent-green); border: 1px solid rgba(0, 230, 118, 0.4);";
+      let badgeStyle = "background: var(--accent-emerald-dim); color: var(--accent-emerald); border: 1px solid rgba(16, 185, 129, 0.4);";
 
       if (evt.entity_type === "vehicle") {
         typeIcon = "🚗";
@@ -486,107 +695,154 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       if (!evt.is_known) {
-        badgeStyle = "background: rgba(255, 171, 0, 0.15); color: var(--accent-amber); border: 1px solid rgba(255, 171, 0, 0.4);";
+        badgeStyle = "background: rgba(244, 63, 94, 0.15); color: var(--accent-rose); border: 1px solid rgba(244, 63, 94, 0.4);";
       }
 
       badge.style = badgeStyle;
       badge.innerHTML = `${typeIcon} ${evt.person_name}`;
     }
 
-    // Se o modal estiver aberto visualizando exatamente esse evento, atualiza o modal na hora
+    // Atualiza contadores
+    const idx = state.eventsData.findIndex(e => (e.event_id || e.id) === eventId);
+    if (idx !== -1) {
+      state.eventsData[idx] = evt;
+      updateFilterCounters();
+    }
+
+    // Atualiza visibilidade com base no filtro ativo
+    if (state.currentFilter !== "all" && newCategory !== state.currentFilter) {
+      card.style.display = "none";
+    } else {
+      card.style.display = "flex";
+    }
+
+    // Se modal aberto inspecionando este evento, atualiza em tempo real
     if (state.activeModalEventId === eventId) {
       if (dom.modalCropImg) dom.modalCropImg.src = `/api/events/${eventId}/crop?t=${Date.now()}`;
       if (dom.modalFullImg) dom.modalFullImg.src = `/api/events/${eventId}/full?t=${Date.now()}`;
     }
   }
 
-  // --- Renderizar Card de Alerta na Sidebar ---
+  // --- 19. Renderizar Card de Evento na Timeline Inteligente ---
   function renderEventCard(evt, isNew = false) {
     const eventId = evt.event_id || evt.id;
+    const category = getCategoryForEvent(evt);
+
     const card = document.createElement("div");
     card.className = "event-card";
     card.id = `event-card-${eventId}`;
+    card.dataset.category = category;
+
+    // Respeita filtro ativo ao renderizar novo card
+    if (state.currentFilter !== "all" && category !== state.currentFilter) {
+      card.style.display = "none";
+    }
 
     const timeObj = new Date(evt.timestamp);
     const timeFormatted = isNaN(timeObj.getTime())
       ? evt.timestamp
       : timeObj.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
-    const cropUrl = `/api/events/${evt.event_id || evt.id}/crop`;
+    const cropUrl = `/api/events/${eventId}/crop`;
     const confPct = Math.round((evt.confidence || 0) * 100);
 
-        let typeIcon = "👤";
-        let badgeStyle = "background: var(--accent-green-dim); color: var(--accent-green); border: 1px solid rgba(0, 230, 118, 0.4);";
+    let typeIcon = "👤";
+    let badgeStyle = "background: var(--accent-emerald-dim); color: var(--accent-emerald); border: 1px solid rgba(16, 185, 129, 0.4);";
 
-        if (evt.entity_type === "vehicle") {
-          typeIcon = "🚗";
-          if (evt.is_known) badgeStyle = "background: rgba(0, 240, 255, 0.15); color: var(--accent-cyan); border: 1px solid rgba(0, 240, 255, 0.4);";
-        } else if (evt.entity_type === "pet") {
-          typeIcon = "🐾";
-          if (evt.is_known) badgeStyle = "background: rgba(224, 64, 251, 0.15); color: #e040fb; border: 1px solid rgba(224, 64, 251, 0.4);";
-        }
+    if (evt.entity_type === "vehicle") {
+      typeIcon = "🚗";
+      if (evt.is_known) badgeStyle = "background: rgba(0, 240, 255, 0.15); color: var(--accent-cyan); border: 1px solid rgba(0, 240, 255, 0.4);";
+    } else if (evt.entity_type === "pet") {
+      typeIcon = "🐾";
+      if (evt.is_known) badgeStyle = "background: rgba(224, 64, 251, 0.15); color: #e040fb; border: 1px solid rgba(224, 64, 251, 0.4);";
+    }
 
-        if (!evt.is_known) {
-          badgeStyle = "background: rgba(255, 171, 0, 0.15); color: var(--accent-amber); border: 1px solid rgba(255, 171, 0, 0.4);";
-        }
+    if (!evt.is_known) {
+      badgeStyle = "background: rgba(244, 63, 94, 0.15); color: var(--accent-rose); border: 1px solid rgba(244, 63, 94, 0.4);";
+    }
 
-        const plateSnippet = evt.license_plate ? ` [${evt.license_plate}]` : '';
+    const plateHtml = evt.license_plate
+      ? `<span class="event-plate-tag" style="font-family: var(--font-mono); font-size: 0.68rem; font-weight: 700; background: #000; color: #fff; border: 1px solid #333; padding: 2px 6px; border-radius: 3px; margin-left: 6px;">[${evt.license_plate}]</span>`
+      : '';
 
-        card.innerHTML = `
-          <div class="event-thumb-wrap">
-            <img class="event-thumb" src="${cropUrl}" alt="Crop" loading="lazy" onerror="this.src='/static/img/placeholder.png'">
-          </div>
-          <div class="event-info">
-            <div class="event-cam-row">
-              <span class="event-cam-name">${evt.camera_name || evt.camera_id}</span>
-              <span class="event-time">${timeFormatted}</span>
-            </div>
-            <div class="event-details-row">
-              <span class="event-id-badge" style="${badgeStyle}">
-                ${typeIcon} ${evt.person_name}${plateSnippet}
-              </span>
-              <span class="event-confidence">${confPct}%</span>
-            </div>
-          </div>
-        `;
+    card.innerHTML = `
+      <div class="event-thumb-wrap">
+        <img class="event-thumb" src="${cropUrl}" alt="Evidência" loading="lazy" onerror="this.src='/static/img/placeholder.png'">
+      </div>
+      <div class="event-info">
+        <div class="event-cam-row">
+          <span class="event-cam-name">${evt.camera_name || evt.camera_id}</span>
+          <span class="event-time mono">${timeFormatted}</span>
+        </div>
+        <div class="event-details-row">
+          <span class="event-id-badge" style="${badgeStyle}">
+            ${typeIcon} ${evt.person_name}
+          </span>
+          ${plateHtml}
+          <span class="event-confidence mono">${confPct}%</span>
+        </div>
+      </div>
+    `;
 
     // Pré-carrega imagem completa em background ao passar o mouse (hover)
     card.addEventListener("mouseenter", () => {
-      prefetchEventImages(evt.event_id || evt.id);
+      prefetchEventImages(eventId);
     }, { once: true });
 
     card.addEventListener("click", () => openModal(evt));
 
     if (isNew) {
       dom.eventsList.prepend(card);
-      // Mantém o DOM do cliente leve removendo elementos antigos que saem da tela
-      while (dom.eventsList.children.length > 40) {
+      while (dom.eventsList.children.length > 45) {
         dom.eventsList.removeChild(dom.eventsList.lastChild);
       }
-      // Pré-carrega imediatamente o alerta mais recente para abertura instantânea
-      prefetchEventImages(evt.event_id || evt.id);
+      prefetchEventImages(eventId);
     } else {
       dom.eventsList.appendChild(card);
     }
   }
 
-  // --- Prefetch Inteligente de Imagens ---
+  // --- 20. Prefetch Inteligente de Imagens para o Modal ---
   const prefetchedEvents = new Set();
   function prefetchEventImages(eventId) {
     if (!eventId || prefetchedEvents.has(eventId)) return;
     prefetchedEvents.add(eventId);
 
-    // Cria requisição discreta em background para aquecer o cache HTTP do navegador
     const preImg = new Image();
     preImg.src = `/api/events/${eventId}/full`;
   }
 
-  // --- Modal de Evidência ---
+  // --- 21. Limpar Tela Tática ---
+  function setupClearScreen() {
+    if (dom.btnClearScreen) {
+      dom.btnClearScreen.addEventListener("click", () => {
+        dom.eventsList.innerHTML = `
+          <div class="events-empty-state" id="events-empty">
+            <div class="empty-radar-circle">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/>
+              </svg>
+            </div>
+            <p>Tela limpa.</p>
+            <span>Novas detecções em tempo real continuarão surgindo aqui.</span>
+          </div>
+        `;
+        state.eventsData = [];
+        state.eventsCount = 0;
+        if (dom.eventsBadge) dom.eventsBadge.textContent = "0";
+        updateFilterCounters();
+      });
+    }
+  }
+
+  // --- 22. Modal Tático de Evidências Biométricas ---
   function setupModalEvents() {
-    dom.modalClose.addEventListener("click", closeModal);
-    dom.modal.addEventListener("click", (e) => {
-      if (e.target === dom.modal) closeModal();
-    });
+    if (dom.modalClose) dom.modalClose.addEventListener("click", closeModal);
+    if (dom.modal) {
+      dom.modal.addEventListener("click", (e) => {
+        if (e.target === dom.modal) closeModal();
+      });
+    }
     window.addEventListener("keydown", (e) => {
       if (e.key === "Escape") closeModal();
     });
@@ -597,23 +853,21 @@ document.addEventListener("DOMContentLoaded", () => {
     const timeObj = new Date(evt.timestamp);
     const timeFormatted = isNaN(timeObj.getTime()) ? evt.timestamp : timeObj.toLocaleString("pt-BR");
 
-    dom.modalCameraTitle.textContent = evt.camera_name || evt.camera_id;
-    dom.modalTime.textContent = timeFormatted;
-    dom.modalTrackId.textContent = `#${evt.tracking_id}`;
-    dom.modalConfidence.textContent = `${Math.round((evt.confidence || 0) * 100)}%`;
-    dom.modalEventId.textContent = evt.event_id || `ID: ${evt.id}`;
+    if (dom.modalCameraTitle) dom.modalCameraTitle.textContent = evt.camera_name || evt.camera_id;
+    if (dom.modalTime) dom.modalTime.textContent = timeFormatted;
+    if (dom.modalTrackId) dom.modalTrackId.textContent = `#${evt.tracking_id}`;
+    if (dom.modalConfidence) dom.modalConfidence.textContent = `${Math.round((evt.confidence || 0) * 100)}%`;
+    if (dom.modalEventId) dom.modalEventId.textContent = evt.event_id || `ID: ${evt.id}`;
 
     if (dom.modalFullRawLink) {
       dom.modalFullRawLink.href = `/api/events/${id}/full?raw=true`;
     }
 
-    // 1. Limpa imagens anteriores e mostra loaders para evitar exibir imagem errada
     dom.modalCropImg.classList.remove("loaded");
     dom.modalFullImg.classList.remove("loaded");
     if (dom.modalCropLoader) dom.modalCropLoader.classList.remove("hidden");
     if (dom.modalFullLoader) dom.modalFullLoader.classList.remove("hidden");
 
-    // 2. Handlers do Crop
     dom.modalCropImg.onload = () => {
       dom.modalCropImg.classList.add("loaded");
       if (dom.modalCropLoader) dom.modalCropLoader.classList.add("hidden");
@@ -622,7 +876,6 @@ document.addEventListener("DOMContentLoaded", () => {
       if (dom.modalCropLoader) dom.modalCropLoader.classList.add("hidden");
     };
 
-    // 3. Handlers da Cena Completa com Bounding Box
     dom.modalFullImg.onload = () => {
       dom.modalFullImg.classList.add("loaded");
       if (dom.modalFullLoader) dom.modalFullLoader.classList.add("hidden");
@@ -631,11 +884,9 @@ document.addEventListener("DOMContentLoaded", () => {
       if (dom.modalFullLoader) dom.modalFullLoader.classList.add("hidden");
     };
 
-    // 4. Inicia o carregamento das imagens
     dom.modalCropImg.src = `/api/events/${id}/crop`;
     dom.modalFullImg.src = `/api/events/${id}/full`;
 
-    // 5. Se já estava no cache HTTP local, ativa imediatamente
     if (dom.modalCropImg.complete && dom.modalCropImg.naturalWidth > 0) {
       dom.modalCropImg.classList.add("loaded");
       if (dom.modalCropLoader) dom.modalCropLoader.classList.add("hidden");
@@ -651,12 +902,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function closeModal() {
     state.activeModalEventId = null;
-    dom.modal.classList.remove("active");
-    // Libera referência para não manter buffers no DOM
-    dom.modalCropImg.src = "";
-    dom.modalFullImg.src = "";
-    dom.modalCropImg.classList.remove("loaded");
-    dom.modalFullImg.classList.remove("loaded");
+    if (dom.modal) dom.modal.classList.remove("active");
+    if (dom.modalCropImg) {
+      dom.modalCropImg.src = "";
+      dom.modalCropImg.classList.remove("loaded");
+    }
+    if (dom.modalFullImg) {
+      dom.modalFullImg.src = "";
+      dom.modalFullImg.classList.remove("loaded");
+    }
   }
 
   init();
