@@ -57,12 +57,12 @@ class FaceRecognizer:
             try:
                 logger.info(f"Carregando pacote biométrico [{target_model}] com det_size=(640, 640)...")
                 app = FaceAnalysis(name=target_model, providers=providers)
-                app.prepare(ctx_id=ctx_id, det_size=(640, 640))
+                app.prepare(ctx_id=ctx_id, det_size=(640, 640), det_thresh=0.35)
                 self.engine_name = f"InsightFace ArcFace [{target_model}] (CUDA/SCRFD 640x640) 🚀"
             except Exception as load_err:
                 logger.warning(f"Pacote {target_model} indisponível ({load_err}). Tentando buffalo_s...")
                 app = FaceAnalysis(name="buffalo_s", providers=providers)
-                app.prepare(ctx_id=ctx_id, det_size=(640, 640))
+                app.prepare(ctx_id=ctx_id, det_size=(640, 640), det_thresh=0.35)
                 self.engine_name = "InsightFace ArcFace [buffalo_s] (CUDA/SCRFD 640x640) 🚀"
 
             self.insight_app = app
@@ -119,6 +119,16 @@ class FaceRecognizer:
             logger.error(f"Falha ao carregar FaceNet fallback: {e}")
             self.is_ready = False
 
+    @property
+    def app(self):
+        """Atalho de conveniência para acessar a instância FaceAnalysis."""
+        return self.insight_app
+
+    @property
+    def gallery_vector_count(self) -> int:
+        """Número total de vetores biométricos registrados em memória."""
+        return sum(len(vecs) for vecs in self.known_gallery.values())
+
     def load_known_faces(self) -> int:
         """
         Escaneia as pastas em data/known_faces/ e gera a Galeria Multi-Embedding (Multi-View).
@@ -126,32 +136,40 @@ class FaceRecognizer:
         """
         self.known_gallery.clear()
         self.known_embeddings.clear()
-        if not self.is_ready or not self.known_faces_dir.exists():
+        if not self.is_ready:
             return 0
 
-        logger.info(f"Escaneando rostos conhecidos via {self.engine_name} em: {self.known_faces_dir}")
+        target_dir = self.known_faces_dir if self.known_faces_dir.is_absolute() else self.known_faces_dir.resolve()
+        if not target_dir.exists():
+            logger.warning(f"Diretório de moradores não encontrado: {target_dir}")
+            return 0
+
+        logger.info(f"Escaneando rostos conhecidos via {self.engine_name} em: {target_dir}")
         person_count = 0
         total_photos = 0
 
-        for person_dir in self.known_faces_dir.iterdir():
+        for person_dir in sorted(target_dir.iterdir(), key=lambda p: p.name.lower()):
             if not person_dir.is_dir() or person_dir.name.startswith("."):
                 continue
 
             person_name = person_dir.name.replace("_", " ").strip()
             embeddings_list = []
 
-            for img_path in person_dir.glob("*"):
-                if img_path.suffix.lower() not in [".jpg", ".jpeg", ".png"]:
+            for img_path in sorted(person_dir.iterdir(), key=lambda p: p.name.lower()):
+                if img_path.suffix.lower() not in [".jpg", ".jpeg", ".png", ".webp"]:
                     continue
 
                 raw_bgr = cv2.imread(str(img_path))
                 if raw_bgr is None:
+                    logger.warning(f"Não foi possível decodificar foto: {img_path.name}")
                     continue
 
                 emb = self._extract_probe_embedding(raw_bgr)
                 if emb is not None:
                     embeddings_list.append(emb)
                     total_photos += 1
+                else:
+                    logger.warning(f"Face não detectada na foto de cadastro [{person_name}]: {img_path.name}")
 
             if embeddings_list:
                 # Galeria Multi-Embedding pura (SOTA): preserva todos os vetores da pessoa
@@ -194,14 +212,37 @@ class FaceRecognizer:
 
     def _extract_probe_embedding(self, img_bgr: np.ndarray) -> Optional[np.ndarray]:
         """Extrai o embedding normalizado de uma imagem (via InsightFace ou FaceNet)."""
-        if self.using_insightface and self.insight_app is not None:
-            faces = self.insight_app.get(img_bgr)
-            if faces and len(faces) > 0:
-                best_face = max(faces, key=lambda f: f.det_score)
-                emb = best_face.embedding.astype(np.float32)
-                norm = np.linalg.norm(emb)
-                return (emb / norm) if norm > 0 else emb
+        if img_bgr is None or img_bgr.size == 0:
             return None
+
+        # Garante 3 canais BGR (converte RGBA de PNGs ou monocromático)
+        if img_bgr.ndim == 3 and img_bgr.shape[2] == 4:
+            img_bgr = cv2.cvtColor(img_bgr, cv2.COLOR_BGRA2BGR)
+        elif img_bgr.ndim == 2:
+            img_bgr = cv2.cvtColor(img_bgr, cv2.COLOR_GRAY2BGR)
+
+        if self.using_insightface and self.insight_app is not None:
+            try:
+                faces = self.insight_app.get(img_bgr)
+                # Se não detectou faces na imagem original (típico de recortes muito fechados sem contexto de ombros),
+                # adiciona borda reflexiva (padding de 25%) para dar contexto ao detector SCRFD
+                if not faces or len(faces) == 0:
+                    h, w = img_bgr.shape[:2]
+                    pad_y = max(32, int(h * 0.25))
+                    pad_x = max(32, int(w * 0.25))
+                    padded_bgr = cv2.copyMakeBorder(
+                        img_bgr, pad_y, pad_y, pad_x, pad_x, cv2.BORDER_REFLECT_101
+                    )
+                    faces = self.insight_app.get(padded_bgr)
+
+                if faces and len(faces) > 0:
+                    best_face = max(faces, key=lambda f: getattr(f, "det_score", 0.0))
+                    if getattr(best_face, "embedding", None) is not None:
+                        emb = best_face.embedding.astype(np.float32)
+                        norm = np.linalg.norm(emb)
+                        return (emb / norm) if norm > 0 else emb
+            except Exception as e:
+                logger.debug(f"Erro na extração InsightFace: {e}")
 
         # Fallback FaceNet
         if self.mtcnn is not None and self.resnet is not None:

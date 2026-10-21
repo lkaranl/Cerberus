@@ -110,11 +110,29 @@ def main():
                 total_rejected += 1
                 continue
 
+            # Garante 3 canais BGR (converte BGRA de PNGs ou Grayscale)
+            if img_bgr.ndim == 3 and img_bgr.shape[2] == 4:
+                img_bgr = cv2.cvtColor(img_bgr, cv2.COLOR_BGRA2BGR)
+            elif img_bgr.ndim == 2:
+                img_bgr = cv2.cvtColor(img_bgr, cv2.COLOR_GRAY2BGR)
+
             h, w = img_bgr.shape[:2]
 
-            # Detecção de faces via InsightFace
+            # Detecção de faces via InsightFace (com padding de contexto se necessário)
             try:
-                faces = face_recognizer.app.get(img_bgr)
+                faces = face_recognizer.app.get(img_bgr) if face_recognizer.app else []
+                is_padded = False
+                pad_y = 0
+                pad_x = 0
+                if not faces or len(faces) == 0:
+                    pad_y = max(32, int(h * 0.25))
+                    pad_x = max(32, int(w * 0.25))
+                    padded_bgr = cv2.copyMakeBorder(
+                        img_bgr, pad_y, pad_y, pad_x, pad_x, cv2.BORDER_REFLECT_101
+                    )
+                    faces = face_recognizer.app.get(padded_bgr) if face_recognizer.app else []
+                    if faces and len(faces) > 0:
+                        is_padded = True
             except Exception as e:
                 print(f"   ❌ [{img_path.name}] Erro na inferência InsightFace: {e}")
                 total_rejected += 1
@@ -130,6 +148,14 @@ def main():
             sorted_faces = sorted(faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]), reverse=True)
             face = sorted_faces[0]
             fx1, fy1, fx2, fy2 = map(int, face.bbox)
+
+            if is_padded:
+                # Reajusta coordenadas para a imagem original
+                fx1 = max(0, fx1 - pad_x)
+                fy1 = max(0, fy1 - pad_y)
+                fx2 = min(w, fx2 - pad_x)
+                fy2 = min(h, fy2 - pad_y)
+
             fw = max(1, fx2 - fx1)
             fh = max(1, fy2 - fy1)
 
