@@ -320,30 +320,32 @@ body.clean-cctv-body {
   filter: drop-shadow(0 0 6px var(--accent-emerald)) drop-shadow(0 0 2px #ffffff);
 }
 
-/* Conteúdo Interno do Mostrador */
+/* Conteúdo Interno do Mostrador (Layout Ultra Clean) */
 .apple-dial-content {
   position: relative;
   width: 100%;
   height: 100%;
-  padding: 18px 24px;
+  padding: 16px 24px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
+  gap: 8px;
   z-index: 3;
 }
 
-/* Topo do Mostrador */
+/* Topo do Mostrador: Data & Período */
 .apple-dial-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   width: 100%;
+  max-width: 250px;
 }
 
 .apple-dial-date {
   font-family: var(--font-mono);
-  font-size: 0.70rem;
+  font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 1.5px;
   color: rgba(255, 255, 255, 0.7);
@@ -365,7 +367,7 @@ body.clean-cctv-body {
 
 .apple-status-text {
   font-family: var(--font-mono);
-  font-size: 0.66rem;
+  font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 1px;
   color: var(--accent-emerald);
@@ -377,7 +379,7 @@ body.clean-cctv-body {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  margin: -4px 0;
+  margin: 0;
 }
 
 .apple-digits-wrap {
@@ -415,45 +417,6 @@ body.clean-cctv-body {
   padding: 2px 6px;
   border-radius: 6px;
   letter-spacing: 0.5px;
-}
-
-/* Base: Status do Sistema */
-.apple-dial-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-}
-
-.apple-sentry-badge {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-family: var(--font-mono);
-  font-size: 0.62rem;
-  font-weight: 700;
-  color: var(--accent-emerald);
-  background: rgba(0, 230, 118, 0.08);
-  border: 1px solid rgba(0, 230, 118, 0.2);
-  padding: 2px 7px;
-  border-radius: 4px;
-  letter-spacing: 0.5px;
-}
-
-.apple-sentry-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--accent-emerald);
-  box-shadow: 0 0 6px var(--accent-emerald);
-}
-
-.apple-system-label {
-  font-family: var(--font-mono);
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 1px;
-  color: var(--text-dim);
 }
 
 /* -------------------------------------------------------------------------

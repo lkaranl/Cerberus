@@ -68,15 +68,6 @@ class AppleModularClock {
             <span class="apple-seconds-pill mono" id="apple-seconds-pill">26</span>
           </div>
 
-          <!-- Base: Status do Sistema -->
-          <div class="apple-dial-footer">
-            <div class="apple-sentry-badge">
-              <span class="apple-sentry-dot"></span>
-              <span class="apple-sentry-text">24/7 ONLINE</span>
-            </div>
-            <span class="apple-system-label">CERBERUS SENTRY</span>
-          </div>
-
         </div>
 
       </div>
@@ -97,15 +88,19 @@ class AppleModularClock {
     const totalLen = guide.getTotalLength();
     this.tickElements = [];
 
-    // O segundo 0 começa exatamente no topo central
-    // Para um retângulo de 330x200 com raio 22, o topo central fica em L = (largura_topo / 2)
-    const topCenterOffset = (this.width - 28) / 2;
+    // O segundo 0 começa exatamente no topo central.
+    // No SVG, um <rect> com cantos arredondados (rx=22) inicia seu traçado no fim da curva superior-esquerda: (x + rx, y).
+    // O comprimento do segmento reto superior é (width - 28 - 2*rx).
+    // Para atingir o centro geométrico horizontal (X = width / 2), o deslocamento linear exato é a metade do segmento superior.
+    const rx = 22;
+    const topStraightWidth = this.width - 28 - (2 * rx);
+    const topCenterOffset = topStraightWidth / 2;
 
     for (let i = 0; i < 60; i++) {
-      // Distribui 60 pontos equidistantes
+      // Distribui 60 pontos perfeitamente equidistantes
       const frac = i / 60;
       let dist = (frac * totalLen) + topCenterOffset;
-      if (dist > totalLen) dist -= totalLen;
+      if (dist >= totalLen) dist -= totalLen;
 
       const p1 = guide.getPointAtLength(dist);
       const nextDist = dist + 1 > totalLen ? dist + 1 - totalLen : dist + 1;
