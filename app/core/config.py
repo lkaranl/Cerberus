@@ -108,6 +108,11 @@ class Settings(BaseSettings):
     )
     fusionsolar_cache_seconds: int = Field(default=90, alias="FUSIONSOLAR_CACHE_SECONDS")
 
+    # Coordenadas Geográficas de Ji-Paraná, RO (para Previsão do Tempo e Irradiação Solar)
+    weather_lat: float = Field(default=-10.8847, alias="WEATHER_LAT")
+    weather_lon: float = Field(default=-61.9514, alias="WEATHER_LON")
+    weather_city_name: str = Field(default="Ji-Paraná, RO", alias="WEATHER_CITY_NAME")
+
     def resolve_device(self) -> str:
         """
         Resolve dinamicamente o melhor dispositivo de inferência disponível,

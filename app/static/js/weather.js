@@ -92,7 +92,7 @@ class CerberusSolarWeatherWidget {
 
   renderTeslaSolarLayout(realSolar) {
     const stationName = realSolar.station_name ? realSolar.station_name.toUpperCase() : "KARAN";
-    const endereco = realSolar.endereco || "Ji-Paraná, RO";
+    const endereco = this.data.city || realSolar.endereco || "Ji-Paraná, RO";
     const currentTemp = this.data.current_temp || 38;
     const currentDesc = this.data.current_desc || "Céu Aberto";
     const currentIcon = this.data.current_icon || "🌤️";

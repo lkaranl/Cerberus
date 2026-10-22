@@ -52,14 +52,16 @@ async def whep_proxy(camera_id: str, request: Request):
 
 
 @router.get("/weather/solar")
-async def get_weather_solar(lat: float = -15.6014, lon: float = -56.0979):
+async def get_weather_solar(lat: Optional[float] = None, lon: Optional[float] = None):
     """
-    Retorna previsão do tempo e irradiação solar diária (kWh/m²) para hoje e os próximos 3 dias,
+    Retorna previsão do tempo e irradiação solar diária (kWh/m²) para Ji-Paraná, RO e os próximos 3 dias,
     enriquecido com a telemetria em tempo real da usina Huawei FusionSolar (potência em kW e geração do dia).
     Possui cache em memória de 30 minutos para o clima, com telemetria solar atualizada dinamicamente.
     """
     global _WEATHER_CACHE
     now = time.time()
+    lat = lat if lat is not None else settings.weather_lat
+    lon = lon if lon is not None else settings.weather_lon
     real_solar = await fusionsolar_client.get_kiosk_data()
 
     if _WEATHER_CACHE["data"] and (now - _WEATHER_CACHE["timestamp"] < 1800):
@@ -152,6 +154,7 @@ async def get_weather_solar(lat: float = -15.6014, lon: float = -56.0979):
             c_desc, c_icon = weather_desc_map.get(current_code, ("Céu Aberto", "🌤️"))
 
             result = {
+                "city": settings.weather_city_name,
                 "current_temp": round(current.get("temperature", 28)),
                 "current_code": current_code,
                 "current_desc": c_desc,
