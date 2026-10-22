@@ -510,6 +510,176 @@ body.clean-cctv-body {
   100% { box-shadow: 0 0 12px rgba(255, 179, 0, 0.35); border-color: rgba(255, 179, 0, 0.65); }
 }
 
+/* -------------------------------------------------------------------------
+   NOVO DESIGN TESLA SOLAR (NÚMEROS MONUMENTAIS & PREVISÃO COMPACTA)
+   ------------------------------------------------------------------------- */
+.tesla-solar-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 10px 14px 10px;
+  background: radial-gradient(circle at 50% 10%, rgba(255, 179, 0, 0.08) 0%, rgba(10, 13, 20, 0.98) 100%);
+}
+
+.tesla-live-beacon {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(0, 230, 118, 0.10);
+  border: 1px solid rgba(0, 230, 118, 0.35);
+  color: #00E676;
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.beacon-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #00E676;
+  box-shadow: 0 0 8px #00E676;
+  animation: beaconPulse 1.8s infinite ease-in-out;
+}
+
+@keyframes beaconPulse {
+  0% { transform: scale(0.9); opacity: 0.7; }
+  50% { transform: scale(1.25); opacity: 1; }
+  100% { transform: scale(0.9); opacity: 0.7; }
+}
+
+/* Hero Metrics */
+.solar-hero-metrics {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 10px 8px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+}
+
+.solar-hero-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.hero-stat-label {
+  font-family: var(--font-mono);
+  font-size: 0.54rem;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+.hero-stat-val-wrap {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.hero-stat-icon {
+  font-size: 1.05rem;
+  filter: drop-shadow(0 0 6px rgba(255, 179, 0, 0.6));
+}
+
+.hero-stat-number {
+  font-family: var(--font-mono);
+  font-size: 2.15rem;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -1px;
+}
+
+.hero-stat-number.stat-power {
+  color: #FFB300;
+  text-shadow: 0 0 20px rgba(255, 179, 0, 0.4);
+}
+
+.hero-stat-number.stat-yield {
+  color: #00E676;
+  text-shadow: 0 0 20px rgba(0, 230, 118, 0.35);
+}
+
+.hero-stat-unit {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.solar-hero-divider {
+  width: 1px;
+  height: 42px;
+  background: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.15), transparent);
+}
+
+/* Forecast Strip (Rodapé Compacto) */
+.solar-forecast-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 5px 12px;
+}
+
+.forecast-strip-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.forecast-day-name {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: 0.5px;
+}
+
+.forecast-day-icon {
+  font-size: 0.88rem;
+}
+
+.forecast-day-temp {
+  font-family: var(--font-main);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.forecast-day-temp small {
+  font-size: 0.62rem;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.forecast-pill {
+  font-family: var(--font-mono);
+  font-size: 0.52rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.forecast-strip-sep {
+  width: 1px;
+  height: 16px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .solar-days-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
