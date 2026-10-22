@@ -3,145 +3,421 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboard Analítico — Sentinela Vision</title>
+  <title>Analytics & Telemetria — Cerberus AI</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/style.css">
+  <!-- Chart.js 4.4 UMD para gráficos analíticos industriais -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
   <style>
-    .dashboard-container {
-      max-width: 1400px;
+    :root {
+      --bg-base: #06080d;
+      --bg-card: rgba(13, 17, 26, 0.82);
+      --bg-card-hover: rgba(18, 24, 38, 0.95);
+      --bg-card-inner: rgba(7, 10, 16, 0.65);
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --border-hover: rgba(255, 255, 255, 0.16);
+      --border-accent: rgba(0, 240, 255, 0.35);
+      --accent-cyan: #00f0ff;
+      --accent-emerald: #00e676;
+      --accent-amber: #ffb300;
+      --accent-rose: #ff3366;
+      --accent-purple: #b388ff;
+      --accent-solar: #f59e0b;
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --font-main: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --radius-full: 9999px;
+      --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.4);
+      --shadow-glow: 0 0 25px rgba(0, 240, 255, 0.15);
+    }
+
+    body.dash-body {
+      background-color: var(--bg-base);
+      background-image: 
+        radial-gradient(ellipse at 15% 10%, rgba(0, 240, 255, 0.04) 0%, transparent 45%),
+        radial-gradient(ellipse at 85% 15%, rgba(0, 230, 118, 0.03) 0%, transparent 45%),
+        radial-gradient(ellipse at 50% 90%, rgba(245, 158, 11, 0.03) 0%, transparent 55%);
+      background-attachment: fixed;
+      color: var(--text-main);
+      font-family: var(--font-main);
+      min-height: 100vh;
+      margin: 0;
+      padding: 0;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Layout Geral */
+    .dashboard-app {
+      max-width: 1560px;
       margin: 0 auto;
-      padding: 24px;
+      padding: 20px 24px 60px 24px;
       display: flex;
       flex-direction: column;
       gap: 24px;
     }
 
-    .dash-nav-btn {
-      display: inline-flex;
+    /* Header de Comando Industrial */
+    .dash-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand-symbol {
+      width: 44px;
+      height: 44px;
+      border-radius: var(--radius-md);
+      background: linear-gradient(135deg, rgba(0, 240, 255, 0.15), rgba(0, 230, 118, 0.15));
+      border: 1px solid var(--border-accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent-cyan);
+      box-shadow: 0 0 20px rgba(0, 240, 255, 0.2);
+      flex-shrink: 0;
+    }
+
+    .brand-symbol svg {
+      animation: pulse-slow 3s infinite ease-in-out;
+    }
+
+    @keyframes pulse-slow {
+      0%, 100% { transform: scale(1); opacity: 0.9; }
+      50% { transform: scale(1.06); opacity: 1; filter: drop-shadow(0 0 6px var(--accent-cyan)); }
+    }
+
+    .brand-title {
+      font-size: 1.35rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      margin: 0;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-title span {
+      background: linear-gradient(90deg, var(--accent-cyan), var(--accent-emerald));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .brand-tag {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: var(--radius-full);
+      background: rgba(0, 240, 255, 0.1);
+      border: 1px solid rgba(0, 240, 255, 0.3);
+      color: var(--accent-cyan);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .brand-subtitle {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin: 2px 0 0 0;
+    }
+
+    /* Telemetria Compacta no Header */
+    .header-telemetry {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .telemetry-chip {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-full);
+      padding: 6px 14px;
+      font-size: 0.76rem;
+      display: flex;
       align-items: center;
       gap: 8px;
-      padding: 8px 16px;
-      border-radius: var(--radius-sm);
-      background: rgba(0, 240, 255, 0.12);
-      border: 1px solid var(--accent-cyan);
-      color: var(--accent-cyan);
-      text-decoration: none;
-      font-size: 0.85rem;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    .telemetry-chip .chip-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent-emerald);
+      box-shadow: 0 0 8px var(--accent-emerald);
+      animation: pulse-dot 2s infinite;
+    }
+
+    .telemetry-chip.solar .chip-dot {
+      background: var(--accent-solar);
+      box-shadow: 0 0 8px var(--accent-solar);
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.85); }
+    }
+
+    .telemetry-chip .chip-label {
+      color: var(--text-dim);
+      font-weight: 500;
+    }
+
+    .telemetry-chip .chip-value {
+      color: #fff;
+      font-family: var(--font-mono);
       font-weight: 600;
-      transition: all 0.2s ease;
     }
 
-    .dash-nav-btn:hover {
-      background: var(--accent-cyan);
-      color: #000;
-      box-shadow: 0 0 16px rgba(0, 240, 255, 0.4);
+    /* Botões de Ação do Header */
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
     }
 
-    .btn-action {
+    .btn-dash {
       background: rgba(255, 255, 255, 0.05);
       border: 1px solid var(--border-subtle);
       color: var(--text-main);
-      padding: 8px 16px;
+      padding: 8px 15px;
       border-radius: var(--radius-sm);
       cursor: pointer;
       font-family: var(--font-main);
-      font-size: 0.85rem;
+      font-size: 0.82rem;
+      font-weight: 500;
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      transition: all 0.2s ease;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      text-decoration: none;
     }
 
-    .btn-action:hover {
-      background: rgba(255, 255, 255, 0.1);
-      border-color: rgba(255, 255, 255, 0.2);
+    .btn-dash:hover {
+      background: rgba(255, 255, 255, 0.09);
+      border-color: var(--border-hover);
+      color: #fff;
+      transform: translateY(-1px);
     }
 
-    .btn-danger {
-      color: #ff5252;
-      border-color: rgba(255, 82, 82, 0.35);
-      background: rgba(255, 82, 82, 0.08);
+    .btn-dash:active {
+      transform: translateY(0);
     }
 
-    .btn-danger:hover {
-      background: rgba(255, 82, 82, 0.2);
-      border-color: #ff5252;
-      box-shadow: 0 0 14px rgba(255, 82, 82, 0.3);
+    .btn-dash.btn-primary {
+      background: linear-gradient(135deg, rgba(0, 240, 255, 0.16), rgba(0, 230, 118, 0.12));
+      border-color: var(--border-accent);
+      color: var(--accent-cyan);
+      font-weight: 600;
+    }
+
+    .btn-dash.btn-primary:hover {
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-emerald));
+      color: #000;
+      border-color: transparent;
+      box-shadow: 0 0 20px rgba(0, 240, 255, 0.4);
+    }
+
+    .btn-dash.btn-danger {
+      color: var(--accent-rose);
+      border-color: rgba(255, 51, 102, 0.25);
+      background: rgba(255, 51, 102, 0.06);
+    }
+
+    .btn-dash.btn-danger:hover {
+      background: rgba(255, 51, 102, 0.2);
+      border-color: var(--accent-rose);
+      box-shadow: 0 0 16px rgba(255, 51, 102, 0.3);
       color: #fff;
     }
 
-    /* KPI Cards Grid */
-    .kpi-grid {
+    /* Bento Grid Industrial de KPIs */
+    .bento-kpi-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
       gap: 16px;
     }
 
-    .kpi-card {
+    .bento-card {
       background: var(--bg-card);
-      backdrop-filter: blur(14px);
+      backdrop-filter: blur(18px);
       border: 1px solid var(--border-subtle);
       border-radius: var(--radius-lg);
-      padding: 18px;
+      padding: 20px;
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      justify-content: space-between;
+      gap: 14px;
       box-shadow: var(--shadow-card);
       position: relative;
       overflow: hidden;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
-    .kpi-card::before {
+    .bento-card:hover {
+      border-color: var(--border-hover);
+      background: var(--bg-card-hover);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+    }
+
+    .bento-card::before {
       content: '';
       position: absolute;
       top: 0;
       left: 0;
       right: 0;
       height: 3px;
+      background: transparent;
+      transition: all 0.3s ease;
     }
 
-    .kpi-total::before { background: var(--accent-cyan); }
-    .kpi-persons::before { background: var(--accent-green); }
-    .kpi-vehicles::before { background: #00f0ff; }
-    .kpi-pets::before { background: #e040fb; }
-    .kpi-today::before { background: #b388ff; }
+    .card-total::before { background: linear-gradient(90deg, var(--accent-cyan), rgba(0, 240, 255, 0.2)); }
+    .card-persons::before { background: linear-gradient(90deg, var(--accent-emerald), rgba(0, 230, 118, 0.2)); }
+    .card-vehicles::before { background: linear-gradient(90deg, #38bdf8, rgba(56, 189, 248, 0.2)); }
+    .card-pets::before { background: linear-gradient(90deg, var(--accent-purple), rgba(179, 136, 255, 0.2)); }
+    .card-solar::before { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
 
-    .kpi-header {
+    .bento-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
     }
 
-    .kpi-title {
-      font-size: 0.82rem;
-      color: var(--text-muted);
-      font-weight: 500;
+    .bento-title-group {
+      display: flex;
+      align-items: center;
+      gap: 9px;
     }
 
-    .kpi-value {
-      font-size: 2rem;
-      font-weight: 700;
+    .bento-icon-wrapper {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border-subtle);
+    }
+
+    .card-total .bento-icon-wrapper { color: var(--accent-cyan); background: rgba(0, 240, 255, 0.1); }
+    .card-persons .bento-icon-wrapper { color: var(--accent-emerald); background: rgba(0, 230, 118, 0.1); }
+    .card-vehicles .bento-icon-wrapper { color: #38bdf8; background: rgba(56, 189, 248, 0.1); }
+    .card-pets .bento-icon-wrapper { color: var(--accent-purple); background: rgba(179, 136, 255, 0.1); }
+    .card-solar .bento-icon-wrapper { color: var(--accent-solar); background: rgba(245, 158, 11, 0.12); }
+
+    .bento-title {
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+
+    .bento-badge {
       font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: var(--radius-full);
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .badge-today {
+      background: rgba(0, 230, 118, 0.12);
+      color: var(--accent-emerald);
+      border: 1px solid rgba(0, 230, 118, 0.3);
+    }
+
+    .badge-split {
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text-muted);
+      border: 1px solid var(--border-subtle);
+    }
+
+    .bento-body {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .bento-value {
+      font-family: var(--font-mono);
+      font-size: 2.15rem;
+      font-weight: 700;
+      color: #fff;
+      line-height: 1;
+      letter-spacing: -0.5px;
+    }
+
+    .bento-unit {
+      font-size: 0.95rem;
+      color: var(--text-dim);
+      font-weight: 500;
+      margin-left: 2px;
+    }
+
+    .bento-spark-sub {
+      font-size: 0.74rem;
+      color: var(--text-dim);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .bento-subpills {
+      display: flex;
+      gap: 8px;
+      font-size: 0.72rem;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+    }
+
+    .bento-subpills span strong {
       color: #fff;
     }
 
-    .kpi-footer {
-      font-size: 0.75rem;
-      color: var(--text-dim);
+    /* Card Solar Especial */
+    .card-solar .bento-value {
+      color: #fbbf24;
     }
 
-    /* Charts Row */
-    .charts-row {
+    /* Gráficos Centrais (2 Colunas 65/35) */
+    .analytics-main-grid {
       display: grid;
-      grid-template-columns: 2fr 1fr;
+      grid-template-columns: 1.8fr 1.2fr;
       gap: 20px;
     }
 
-    .chart-card {
+    .panel-card {
       background: var(--bg-card);
-      backdrop-filter: blur(14px);
+      backdrop-filter: blur(18px);
       border: 1px solid var(--border-subtle);
       border-radius: var(--radius-lg);
       padding: 22px;
@@ -151,459 +427,873 @@
       gap: 18px;
     }
 
-    .chart-header {
+    .panel-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
       flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .panel-title-wrap {
+      display: flex;
+      align-items: center;
       gap: 10px;
     }
 
-    .chart-title {
-      font-size: 1rem;
+    .panel-title {
+      font-size: 0.98rem;
       font-weight: 600;
       color: #fff;
+      margin: 0;
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 9px;
     }
 
-    /* SVG Histogram Bars */
-    .hourly-chart-container {
+    .panel-subtitle {
+      font-size: 0.76rem;
+      color: var(--text-dim);
+      margin: 2px 0 0 0;
+    }
+
+    .chart-container-box {
       width: 100%;
-      height: 200px;
-      display: flex;
-      align-items: flex-end;
-      gap: 6px;
-      padding-top: 20px;
-      border-bottom: 1px solid var(--border-subtle);
-    }
-
-    .hour-bar-col {
-      flex: 1;
-      height: 100%;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: flex-end;
-      gap: 6px;
+      height: 270px;
       position: relative;
     }
 
-    .hour-bar {
-      width: 100%;
-      background: linear-gradient(180deg, var(--accent-cyan), rgba(0, 240, 255, 0.2));
-      border-radius: 4px 4px 0 0;
-      min-height: 4px;
-      transition: height 0.5s ease;
-      cursor: pointer;
-    }
-
-    .hour-bar:hover {
-      background: #fff;
-      box-shadow: 0 0 12px var(--accent-cyan);
-    }
-
-    .hour-label {
-      font-family: var(--font-mono);
-      font-size: 0.68rem;
-      color: var(--text-dim);
-    }
-
-    .hour-tooltip {
-      position: absolute;
-      top: -28px;
-      background: rgba(0, 0, 0, 0.85);
-      padding: 2px 6px;
-      border-radius: 4px;
-      font-family: var(--font-mono);
-      font-size: 0.72rem;
-      color: #fff;
-      border: 1px solid var(--border-subtle);
-      display: none;
-      white-space: nowrap;
-    }
-
-    .hour-bar-col:hover .hour-tooltip {
-      display: block;
-    }
-
-    /* Camera Breakdown Bars */
-    .cam-breakdown-list {
+    /* Breakdown de Câmeras */
+    .cam-distribution-list {
       display: flex;
       flex-direction: column;
       gap: 14px;
     }
 
-    .cam-bar-item {
+    .cam-dist-item {
       display: flex;
       flex-direction: column;
       gap: 6px;
     }
 
-    .cam-bar-header {
+    .cam-dist-info {
       display: flex;
       justify-content: space-between;
-      font-size: 0.85rem;
+      font-size: 0.82rem;
     }
 
-    .cam-bar-track {
+    .cam-dist-name {
+      color: var(--text-main);
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .cam-dist-metric {
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+    }
+
+    .cam-dist-metric strong {
+      color: #fff;
+    }
+
+    .cam-track-bar {
       width: 100%;
-      height: 8px;
+      height: 7px;
       background: rgba(255, 255, 255, 0.05);
       border-radius: var(--radius-full);
       overflow: hidden;
     }
 
-    .cam-bar-fill {
+    .cam-fill-bar {
       height: 100%;
       border-radius: var(--radius-full);
-      transition: width 0.6s ease;
+      transition: width 0.7s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
-    /* Tabela de Auditoria */
-    .table-container {
-      overflow-x: auto;
-    }
-
-    .audit-table {
-      width: 100%;
-      border-collapse: collapse;
-      text-align: left;
-      font-size: 0.85rem;
-    }
-
-    .audit-table th {
-      padding: 12px 14px;
-      color: var(--text-muted);
+    /* Tabs Rápidas de Frequência / Leaderboard */
+    .leaderboard-tabs {
+      display: flex;
+      gap: 6px;
       border-bottom: 1px solid var(--border-subtle);
-      font-weight: 600;
+      padding-bottom: 10px;
+      margin-top: 10px;
     }
 
-    .audit-table td {
-      padding: 12px 14px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-      vertical-align: middle;
-    }
-
-    .audit-table tr:hover {
-      background: rgba(255, 255, 255, 0.02);
-    }
-
-    .table-thumb {
-      width: 48px;
-      height: 48px;
-      border-radius: 6px;
-      object-fit: cover;
+    .lead-tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-dim);
+      font-family: var(--font-main);
+      font-size: 0.78rem;
+      font-weight: 500;
+      padding: 4px 10px;
+      border-radius: var(--radius-sm);
       cursor: pointer;
-      border: 1px solid var(--border-subtle);
-      transition: transform 0.2s ease;
+      transition: all 0.2s ease;
     }
 
-    .table-thumb:hover {
-      transform: scale(1.1);
+    .lead-tab-btn:hover {
+      color: var(--text-main);
+      background: rgba(255, 255, 255, 0.04);
     }
 
-    /* Badges Temáticos */
-    .badge-person-known {
-      background: var(--accent-green-dim);
-      color: var(--accent-green);
-      border: 1px solid rgba(0, 230, 118, 0.4);
-      padding: 3px 8px;
-      border-radius: var(--radius-full);
-      font-size: 0.75rem;
-      font-weight: 600;
-    }
-
-    .badge-vehicle-known {
-      background: rgba(0, 240, 255, 0.15);
+    .lead-tab-btn.active {
       color: var(--accent-cyan);
-      border: 1px solid rgba(0, 240, 255, 0.4);
-      padding: 3px 8px;
-      border-radius: var(--radius-full);
-      font-size: 0.75rem;
+      background: rgba(0, 240, 255, 0.1);
       font-weight: 600;
     }
 
-    .badge-pet-known {
-      background: rgba(224, 64, 251, 0.15);
-      color: #e040fb;
-      border: 1px solid rgba(224, 64, 251, 0.4);
-      padding: 3px 8px;
-      border-radius: var(--radius-full);
-      font-size: 0.75rem;
-      font-weight: 600;
+    .leaderboard-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 180px;
+      overflow-y: auto;
     }
 
-    .badge-unknown {
-      background: rgba(255, 171, 0, 0.15);
-      color: var(--accent-amber);
-      border: 1px solid rgba(255, 171, 0, 0.4);
-      padding: 3px 8px;
-      border-radius: var(--radius-full);
-      font-size: 0.75rem;
-      font-weight: 600;
+    .lead-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background: var(--bg-card-inner);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      border-radius: var(--radius-sm);
+      font-size: 0.8rem;
+      transition: background 0.2s ease;
     }
 
-    .badge-plate {
-      background: #111;
-      color: #fff;
-      border: 1px solid #444;
-      border-top: 3px solid #0055a5; /* Estilo padrão Mercosul */
+    .lead-row:hover {
+      background: rgba(255, 255, 255, 0.04);
+      border-color: rgba(255, 255, 255, 0.08);
+    }
+
+    .lead-ident {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .lead-count {
       font-family: var(--font-mono);
       font-size: 0.75rem;
-      font-weight: 700;
-      padding: 2px 6px;
-      border-radius: 4px;
-      letter-spacing: 1px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 10px;
     }
 
-    .filter-tabs {
+    .lead-count strong {
+      color: #fff;
+    }
+
+    /* Seção de Auditoria e Tabela Forense */
+    .audit-section {
+      background: var(--bg-card);
+      backdrop-filter: blur(18px);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 22px;
+      box-shadow: var(--shadow-card);
       display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .audit-controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 14px;
+    }
+
+    .audit-search-box {
+      position: relative;
+      min-width: 280px;
+    }
+
+    .audit-search-box svg {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-dim);
+      pointer-events: none;
+    }
+
+    .audit-search-input {
+      width: 100%;
+      background: var(--bg-card-inner);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-full);
+      padding: 8px 14px 8px 38px;
+      color: #fff;
+      font-family: var(--font-main);
+      font-size: 0.82rem;
+      outline: none;
+      transition: all 0.2s ease;
+    }
+
+    .audit-search-input:focus {
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 12px rgba(0, 240, 255, 0.25);
+      background: rgba(0, 0, 0, 0.5);
+    }
+
+    .audit-search-input::placeholder {
+      color: var(--text-dim);
+    }
+
+    .filter-pills-wrap {
+      display: flex;
+      align-items: center;
       gap: 8px;
       flex-wrap: wrap;
     }
 
-    .filter-tab {
-      padding: 6px 14px;
+    .pill-tab {
+      padding: 6px 13px;
       border-radius: var(--radius-full);
       background: rgba(255, 255, 255, 0.04);
       border: 1px solid var(--border-subtle);
       color: var(--text-muted);
-      font-size: 0.78rem;
+      font-size: 0.77rem;
       cursor: pointer;
       font-family: var(--font-main);
-      transition: all 0.2s ease;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
     }
 
-    .filter-tab.active {
-      background: var(--accent-cyan-dim);
+    .pill-tab:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+    }
+
+    .pill-tab.active {
+      background: rgba(0, 240, 255, 0.12);
       border-color: var(--accent-cyan);
       color: var(--accent-cyan);
+      font-weight: 600;
     }
 
-    @media (max-width: 992px) {
-      .charts-row {
+    .pill-tab.filter-alert.active {
+      background: rgba(255, 179, 0, 0.15);
+      border-color: var(--accent-amber);
+      color: var(--accent-amber);
+    }
+
+    .pill-tab.filter-known.active {
+      background: rgba(0, 230, 118, 0.15);
+      border-color: var(--accent-emerald);
+      color: var(--accent-emerald);
+    }
+
+    /* Tabela Estilizada */
+    .table-responsive {
+      overflow-x: auto;
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      border-radius: var(--radius-md);
+      background: var(--bg-card-inner);
+    }
+
+    .forensic-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.83rem;
+    }
+
+    .forensic-table thead {
+      background: rgba(255, 255, 255, 0.02);
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+
+    .forensic-table th {
+      padding: 13px 16px;
+      color: var(--text-dim);
+      font-size: 0.74rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .forensic-table td {
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+      vertical-align: middle;
+      color: var(--text-main);
+    }
+
+    .forensic-table tbody tr {
+      transition: background 0.15s ease;
+    }
+
+    .forensic-table tbody tr:hover {
+      background: rgba(0, 240, 255, 0.025);
+    }
+
+    /* Thumbnail Forense */
+    .thumb-evidence {
+      width: 44px;
+      height: 44px;
+      border-radius: 8px;
+      object-fit: cover;
+      cursor: pointer;
+      border: 1px solid var(--border-subtle);
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      display: block;
+      background: #000;
+    }
+
+    .thumb-evidence:hover {
+      transform: scale(1.15);
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 16px rgba(0, 240, 255, 0.4);
+    }
+
+    /* Badges de Entidades */
+    .badge-forensic {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: var(--radius-full);
+      font-size: 0.76rem;
+      font-weight: 600;
+    }
+
+    .badge-forensic.person-known {
+      background: rgba(0, 230, 118, 0.12);
+      color: var(--accent-emerald);
+      border: 1px solid rgba(0, 230, 118, 0.35);
+    }
+
+    .badge-forensic.vehicle-known {
+      background: rgba(56, 189, 248, 0.12);
+      color: #38bdf8;
+      border: 1px solid rgba(56, 189, 248, 0.35);
+    }
+
+    .badge-forensic.pet-known {
+      background: rgba(179, 136, 255, 0.12);
+      color: var(--accent-purple);
+      border: 1px solid rgba(179, 136, 255, 0.35);
+    }
+
+    .badge-forensic.unknown {
+      background: rgba(255, 179, 0, 0.12);
+      color: var(--accent-amber);
+      border: 1px solid rgba(255, 179, 0, 0.35);
+    }
+
+    /* Placa Mercosul Autêntica */
+    .badge-plate-mercosul {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      background: #f8fafc;
+      color: #0f172a;
+      border-radius: 4px;
+      border: 1.5px solid #334155;
+      font-family: var(--font-mono);
+      font-size: 0.76rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+      overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+      line-height: 1;
+    }
+
+    .badge-plate-mercosul .plate-top {
+      background: #003399;
+      color: #ffffff;
+      font-size: 0.52rem;
+      padding: 2px 8px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      font-weight: 700;
+      width: 100%;
+      text-align: center;
+    }
+
+    .badge-plate-mercosul .plate-code {
+      padding: 3px 6px;
+    }
+
+    /* Barra de Confiança */
+    .confidence-meter {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+
+    .conf-track {
+      width: 48px;
+      height: 5px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: var(--radius-full);
+      overflow: hidden;
+    }
+
+    .conf-fill {
+      height: 100%;
+      background: var(--accent-emerald);
+      border-radius: var(--radius-full);
+    }
+
+    /* Status do Rodapé da Tabela */
+    .table-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 10px;
+      font-size: 0.78rem;
+      color: var(--text-dim);
+    }
+
+    /* Estilos do Modal Forense e Loaders */
+    .modal-img-box {
+      position: relative;
+    }
+
+    .modal-loader {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      z-index: 5;
+      border-radius: 6px;
+      transition: opacity 0.2s ease;
+    }
+
+    .modal-loader.hidden {
+      display: none !important;
+    }
+
+    .spinner {
+      width: 26px;
+      height: 26px;
+      border: 2px solid rgba(0, 240, 255, 0.2);
+      border-top-color: var(--accent-cyan);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .modal-img {
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    .modal-img.loaded {
+      opacity: 1;
+    }
+
+    /* Responsividade */
+    @media (max-width: 1100px) {
+      .analytics-main-grid {
         grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .dashboard-app {
+        padding: 16px;
+      }
+      .dash-header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .bento-kpi-grid {
+        grid-template-columns: 1fr;
+      }
+      .audit-controls {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .audit-search-box {
+        min-width: 100%;
       }
     }
   </style>
 </head>
-<body>
-  <div class="app-container">
-    <!-- Header -->
-    <header class="app-header">
-      <div class="brand">
-        <div class="brand-icon">
+<body class="dash-body">
+
+  <div class="dashboard-app">
+    <!-- Topbar Executiva & Telemetria -->
+    <header class="dash-header">
+      <div class="brand-group">
+        <div class="brand-symbol">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="20" x2="18" y2="10"/>
-            <line x1="12" y1="20" x2="12" y2="4"/>
-            <line x1="6" y1="20" x2="6" y2="14"/>
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
           </svg>
         </div>
         <div>
-          <h1 class="brand-title">SENTINELA <span>ANALYTICS</span></h1>
-          <p class="brand-subtitle">Pessoas, Veículos (Placas) e Animais — Inteligência Artificial</p>
+          <h1 class="brand-title">
+            CERBERUS <span>ANALYTICS</span>
+            <span class="brand-tag">Enterprise SOTA</span>
+          </h1>
+          <p class="brand-subtitle">Inteligência Artificial de Borda & Telemetria Fotovoltaica</p>
         </div>
       </div>
 
-      <div class="header-status">
-        <button class="btn-action" id="btn-reload-entities" title="Recarrega novas fotos e placas em data/known_*/">
+      <!-- Chips de Telemetria de Hardware & Solar -->
+      <div class="header-telemetry">
+        <div class="telemetry-chip" id="chip-hardware" title="Módulo de Aceleração por Hardware">
+          <span class="chip-dot"></span>
+          <span class="chip-label">AI Engine:</span>
+          <span class="chip-value" id="val-hardware">Detectando...</span>
+        </div>
+
+        <div class="telemetry-chip solar" id="chip-solar" title="Geração Solar em Tempo Real (Huawei FusionSolar)">
+          <span class="chip-dot"></span>
+          <span class="chip-label">Usina Solar:</span>
+          <span class="chip-value" id="val-solar">-- kW</span>
+        </div>
+      </div>
+
+      <!-- Ações do Header -->
+      <div class="header-actions">
+        <button class="btn-dash" id="btn-sync-entities" title="Sincroniza novas fotos e placas em data/known_*/">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="23 4 23 10 17 10"/>
             <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
           </svg>
-          Sincronizar Cadastros
+          Sincronizar
         </button>
 
-        <button class="btn-action btn-danger" id="btn-clear-db" title="Limpar todo o histórico de eventos e evidências do banco de dados SQLite">
+        <button class="btn-dash btn-danger" id="btn-purge-db" title="Limpar banco de eventos SQLite">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="3 6 5 6 21 6"></polyline>
-            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            <polyline points="3 6 5 6 21 6"/>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
           </svg>
-          Limpar Banco de Dados
+          Limpar Base
         </button>
 
-        <a href="/" class="dash-nav-btn">
+        <a href="/" class="btn-dash btn-primary">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
-            <circle cx="12" cy="12" r="3" />
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+            <line x1="8" y1="21" x2="16" y2="21"/>
+            <line x1="12" y1="17" x2="12" y2="21"/>
           </svg>
-          Ao Vivo (Câmeras)
+          ← CCTV Ao Vivo
         </a>
       </div>
     </header>
 
-    <!-- Conteúdo Principal -->
-    <main class="dashboard-container">
-      <!-- Cards de Métricas Principais (KPIs) -->
-      <section class="kpi-grid">
-        <div class="kpi-card kpi-total">
-          <div class="kpi-header">
-            <span class="kpi-title">Total de Registros</span>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-              <circle cx="9" cy="7" r="4"/>
-            </svg>
-          </div>
-          <div class="kpi-value" id="kpi-total">0</div>
-          <div class="kpi-footer">Histórico 24/7 no SQLite</div>
-        </div>
-
-        <div class="kpi-card kpi-persons">
-          <div class="kpi-header">
-            <span class="kpi-title">👤 Pessoas</span>
-            <span class="badge-person-known" id="kpi-persons-badge">0</span>
-          </div>
-          <div class="kpi-value" id="kpi-persons">0</div>
-          <div class="kpi-footer">Detectadas nas câmeras</div>
-        </div>
-
-        <div class="kpi-card kpi-vehicles">
-          <div class="kpi-header">
-            <span class="kpi-title">🚗 Veículos</span>
-            <span class="badge-vehicle-known" id="kpi-vehicles-badge">0</span>
-          </div>
-          <div class="kpi-value" id="kpi-vehicles">0</div>
-          <div class="kpi-footer">Carros, motos e caminhões</div>
-        </div>
-
-        <div class="kpi-card kpi-pets">
-          <div class="kpi-header">
-            <span class="kpi-title">🐾 Animais (Pets)</span>
-            <span class="badge-pet-known" id="kpi-pets-badge">0</span>
-          </div>
-          <div class="kpi-value" id="kpi-pets">0</div>
-          <div class="kpi-footer">Gatos e cachorros</div>
-        </div>
-
-        <div class="kpi-card kpi-today">
-          <div class="kpi-header">
-            <span class="kpi-title">Detectados Hoje</span>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#b388ff" stroke-width="2">
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-              <line x1="16" y1="2" x2="16" y2="6"/>
-              <line x1="8" y1="2" x2="8" y2="6"/>
-              <line x1="3" y1="10" x2="21" y2="10"/>
-            </svg>
-          </div>
-          <div class="kpi-value" id="kpi-today">0</div>
-          <div class="kpi-footer">Últimas 24 horas</div>
-        </div>
-      </section>
-
-      <!-- Gráficos de Distribuição -->
-      <section class="charts-row">
-        <!-- Gráfico de Horários do Dia -->
-        <div class="chart-card">
-          <div class="chart-header">
-            <h3 class="chart-title">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <!-- Bento Grid de KPIs Industriais (5 Módulos Estratégicos) -->
+    <section class="bento-kpi-grid">
+      <!-- 1. Total de Eventos -->
+      <div class="bento-card card-total">
+        <div class="bento-header">
+          <div class="bento-title-group">
+            <div class="bento-icon-wrapper">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="12" cy="12" r="10"/>
-                <polyline points="12 6 12 12 16 14"/>
+                <polyline points="12 6 12 12 14 14"/>
               </svg>
-              Movimentação por Horário do Dia
-            </h3>
-            <span class="kpi-footer">Picos de atividade (00h às 23h)</span>
+            </div>
+            <span class="bento-title">Eventos Totais</span>
           </div>
+          <span class="bento-badge badge-today" id="badge-events-today">+0 hoje</span>
+        </div>
+        <div class="bento-body">
+          <div class="bento-value" id="kpi-total-val">0</div>
+          <span class="bento-spark-sub">SQLite 24/7 Ativo</span>
+        </div>
+        <div class="bento-subpills">
+          <span>Hoje: <strong id="kpi-today-val">0</strong></span>
+          <span>•</span>
+          <span>Taxa: <strong id="kpi-rate-val">--/h</strong></span>
+        </div>
+      </div>
 
-          <div class="hourly-chart-container" id="hourly-bars"></div>
+      <!-- 2. Pessoas (Face Recognition) -->
+      <div class="bento-card card-persons">
+        <div class="bento-header">
+          <div class="bento-title-group">
+            <div class="bento-icon-wrapper">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                <circle cx="12" cy="7" r="4"/>
+              </svg>
+            </div>
+            <span class="bento-title">Pessoas (Facial)</span>
+          </div>
+          <span class="bento-badge badge-split" id="kpi-persons-split">--</span>
+        </div>
+        <div class="bento-body">
+          <div class="bento-value" id="kpi-persons-val">0</div>
+          <span class="bento-spark-sub" id="kpi-persons-pct">0% do fluxo</span>
+        </div>
+        <div class="bento-subpills">
+          <span style="color: var(--accent-emerald);">Autorizados: <strong id="kpi-persons-known">0</strong></span>
+          <span>•</span>
+          <span style="color: var(--accent-amber);">Desconhecidos: <strong id="kpi-persons-unknown">0</strong></span>
+        </div>
+      </div>
+
+      <!-- 3. Veículos & Placas (LPR/ALPR) -->
+      <div class="bento-card card-vehicles">
+        <div class="bento-header">
+          <div class="bento-title-group">
+            <div class="bento-icon-wrapper">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="1" y="5" width="22" height="14" rx="3"/>
+                <circle cx="7" cy="19" r="2"/>
+                <circle cx="17" cy="19" r="2"/>
+              </svg>
+            </div>
+            <span class="bento-title">Veículos & Placas</span>
+          </div>
+          <span class="bento-badge badge-split" id="kpi-vehicles-split">LPR Ativo</span>
+        </div>
+        <div class="bento-body">
+          <div class="bento-value" id="kpi-vehicles-val">0</div>
+          <span class="bento-spark-sub">Carros / Motos</span>
+        </div>
+        <div class="bento-subpills">
+          <span>Cadastrados: <strong id="kpi-vehicles-known">0</strong></span>
+          <span>•</span>
+          <span>Visitantes: <strong id="kpi-vehicles-unknown">0</strong></span>
+        </div>
+      </div>
+
+      <!-- 4. Animais Monitorados (Pets) -->
+      <div class="bento-card card-pets">
+        <div class="bento-header">
+          <div class="bento-title-group">
+            <div class="bento-icon-wrapper">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="4" r="2"/>
+                <circle cx="18" cy="8" r="2"/>
+                <circle cx="20" cy="16" r="2"/>
+                <path d="M9 10a5 5 0 0 1 5 5v5a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-5a5 5 0 0 1 3-5z"/>
+              </svg>
+            </div>
+            <span class="bento-title">Animais (Pets)</span>
+          </div>
+          <span class="bento-badge badge-split" id="kpi-pets-split">IA Doméstica</span>
+        </div>
+        <div class="bento-body">
+          <div class="bento-value" id="kpi-pets-val">0</div>
+          <span class="bento-spark-sub">Cães & Gatos</span>
+        </div>
+        <div class="bento-subpills">
+          <span style="color: var(--accent-purple);">Identificados: <strong id="kpi-pets-known">0</strong></span>
+        </div>
+      </div>
+
+      <!-- 5. Usina Fotovoltaica Huawei FusionSolar -->
+      <div class="bento-card card-solar">
+        <div class="bento-header">
+          <div class="bento-title-group">
+            <div class="bento-icon-wrapper">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="5"/>
+                <line x1="12" y1="1" x2="12" y2="3"/>
+                <line x1="12" y1="21" x2="12" y2="23"/>
+                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                <line x1="1" y1="12" x2="3" y2="12"/>
+                <line x1="21" y1="12" x2="23" y2="12"/>
+                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+              </svg>
+            </div>
+            <span class="bento-title">Usina Solar</span>
+          </div>
+          <span class="bento-badge badge-today" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border-color: rgba(245, 158, 11, 0.35);" id="solar-status-badge">Huawei Cloud</span>
+        </div>
+        <div class="bento-body">
+          <div class="bento-value" id="kpi-solar-power">0.00 <span class="bento-unit">kW</span></div>
+          <span class="bento-spark-sub" id="solar-weather-desc">Ji-Paraná, RO</span>
+        </div>
+        <div class="bento-subpills">
+          <span>Geração Hoje: <strong id="kpi-solar-today">0.0 kWh</strong></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Área de Gráficos e Distribuição (60% Histograma 24h / 40% Câmeras e Leaderboards) -->
+    <section class="analytics-main-grid">
+      <!-- Painel 1: Histograma 24h Fluido (Chart.js ou SVG Dinâmico) -->
+      <div class="panel-card">
+        <div class="panel-header">
+          <div class="panel-title-wrap">
+            <h3 class="panel-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-cyan)" stroke-width="2">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+              </svg>
+              Movimentação e Frequência por Horário (24h)
+            </h3>
+          </div>
+          <p class="panel-subtitle">Volume de detecções ao longo do ciclo diário (00h às 23h)</p>
         </div>
 
-        <!-- Distribuição por Câmera -->
-        <div class="chart-card">
-          <div class="chart-header">
-            <h3 class="chart-title">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <div class="chart-container-box">
+          <canvas id="hourlyTrendsChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Painel 2: Distribuição por Câmeras & Rankings Mais Recorrentes -->
+      <div class="panel-card">
+        <div class="panel-header">
+          <div class="panel-title-wrap">
+            <h3 class="panel-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-emerald)" stroke-width="2">
                 <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/>
                 <line x1="7" y1="2" x2="7" y2="22"/>
                 <line x1="17" y1="2" x2="17" y2="22"/>
               </svg>
-              Atividade por Câmera
+              Carga das Câmeras & Recorrentes
             </h3>
           </div>
-
-          <div class="cam-breakdown-list" id="camera-breakdown"></div>
+          <p class="panel-subtitle">Distribuição por zona monitorada</p>
         </div>
-      </section>
 
-      <!-- Tabela de Auditoria e Histórico -->
-      <section class="chart-card">
-        <div class="chart-header">
-          <h3 class="chart-title">
+        <!-- Carga por Câmera -->
+        <div class="cam-distribution-list" id="camera-breakdown">
+          <div style="color: var(--text-dim); font-size: 0.85rem; padding: 10px 0;">Carregando métricas de câmeras...</div>
+        </div>
+
+        <!-- Leaderboard com Tabs -->
+        <div>
+          <div class="leaderboard-tabs">
+            <button class="lead-tab-btn active" data-lead="persons">👤 Top Pessoas</button>
+            <button class="lead-tab-btn" data-lead="vehicles">🚗 Top Veículos</button>
+            <button class="lead-tab-btn" data-lead="pets">🐾 Top Pets</button>
+          </div>
+          <div class="leaderboard-list" id="leaderboard-container">
+            <div style="color: var(--text-dim); font-size: 0.78rem; padding: 12px 0;">Carregando ranking...</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Auditoria Forense e Feed de Detecções -->
+    <section class="audit-section">
+      <div class="audit-controls">
+        <div class="panel-title-wrap">
+          <h3 class="panel-title">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
               <polyline points="14 2 14 8 20 8"/>
             </svg>
-            Auditoria de Detecções & Evidências
+            Auditoria Forense & Feed de Detecções
           </h3>
-
-          <div class="filter-tabs">
-            <button class="filter-tab active" data-type="all">Todos</button>
-            <button class="filter-tab" data-type="person">👤 Pessoas</button>
-            <button class="filter-tab" data-type="vehicle">🚗 Veículos</button>
-            <button class="filter-tab" data-type="pet">🐾 Animais</button>
-            <button class="filter-tab" data-filter="known">🟢 Apenas Conhecidos</button>
-            <button class="filter-tab" data-filter="unknown">🟡 Desconhecidos</button>
-          </div>
         </div>
 
-        <div class="table-container">
-          <table class="audit-table">
-            <thead>
-              <tr>
-                <th>Foto</th>
-                <th>Categoria</th>
-                <th>Identificação / Nome</th>
-                <th>Placa</th>
-                <th>Câmera</th>
-                <th>Horário</th>
-                <th>Confiança</th>
-              </tr>
-            </thead>
-            <tbody id="audit-table-body"></tbody>
-          </table>
+        <!-- Barra de Busca Rápida -->
+        <div class="audit-search-box">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input type="text" id="audit-search" class="audit-search-input" placeholder="Buscar por nome, placa, câmera..." autocomplete="off">
         </div>
-      </section>
-    </main>
+
+        <!-- Filtros Rápidos (Pills) -->
+        <div class="filter-pills-wrap">
+          <button class="pill-tab active" data-type="all">Todos</button>
+          <button class="pill-tab" data-type="person">👤 Pessoas</button>
+          <button class="pill-tab" data-type="vehicle">🚗 Veículos</button>
+          <button class="pill-tab" data-type="pet">🐾 Pets</button>
+          <button class="pill-tab filter-known" data-filter="known">🟢 Conhecidos</button>
+          <button class="pill-tab filter-alert" data-filter="unknown">🟡 Desconhecidos</button>
+        </div>
+      </div>
+
+      <!-- Tabela Forense -->
+      <div class="table-responsive">
+        <table class="forensic-table">
+          <thead>
+            <tr>
+              <th style="width: 70px;">Evidência</th>
+              <th>Entidade</th>
+              <th>Identificação</th>
+              <th>Placa (LPR)</th>
+              <th>Câmera</th>
+              <th>Horário</th>
+              <th>Confiança</th>
+            </tr>
+          </thead>
+          <tbody id="audit-table-body">
+            <tr>
+              <td colspan="7" style="text-align: center; color: var(--text-dim); padding: 40px;">
+                Carregando eventos do banco de dados...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Rodapé da Tabela com Contadores -->
+      <div class="table-footer">
+        <span id="audit-count-info">Exibindo 0 registros</span>
+        <span>Clique na foto para inspecionar cena completa em resolução original</span>
+      </div>
+    </section>
   </div>
 
-  <!-- Modal de Inspeção em Alta Resolução -->
+  <!-- Modal de Inspeção Forense em Alta Resolução -->
   <div class="modal-backdrop" id="dash-modal">
     <div class="modal-card">
       <div class="modal-header">
-        <h3 id="modal-name">Detalhes do Evento</h3>
+        <div class="modal-title-group">
+          <h3 id="modal-name">Detalhes da Evidência</h3>
+          <span class="modal-cam-badge" id="modal-camera">Câmera</span>
+          <span class="modal-time-badge" id="modal-time">Horário</span>
+        </div>
         <button class="modal-close-btn" id="modal-close">✕</button>
       </div>
+
       <div class="modal-body">
-        <div class="modal-media-row">
-          <div class="modal-media-box">
-            <div class="media-box-header">
-              <span class="media-box-label">Recorte do Alvo</span>
-            </div>
-            <div class="media-img-container">
-              <div class="media-loader" id="modal-crop-loader">
-                <div class="spinner"></div>
-              </div>
-              <img id="modal-crop" src="" alt="Recorte" class="modal-img-crop">
-            </div>
+        <div class="modal-imgs-row">
+          <!-- Recorte do Alvo -->
+          <div class="modal-img-box">
+            <span class="modal-img-label">Recorte do Alvo</span>
+            <div class="modal-loader" id="modal-crop-loader"><div class="spinner"></div></div>
+            <img id="modal-crop" src="" alt="Recorte" class="modal-img">
           </div>
-          <div class="modal-media-box full-box">
-            <div class="media-box-header">
-              <span class="media-box-label">Cena Completa com Caixa Delimitadora</span>
-              <a id="modal-full-raw-link" href="#" target="_blank" class="media-raw-btn" title="Abrir imagem na resolução máxima original (4K/1080p)">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+
+          <!-- Cena Completa 4K/Full HD -->
+          <div class="modal-img-box full-box">
+            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 6px;">
+              <span class="modal-img-label">Cena Completa com Bounding Box</span>
+              <a id="modal-full-raw-link" href="#" target="_blank" class="btn-dash" style="padding: 4px 10px; font-size: 0.72rem;">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+                </svg>
                 Resolução Original
               </a>
             </div>
-            <div class="media-img-container">
-              <div class="media-loader" id="modal-full-loader">
-                <div class="spinner"></div>
-                <span class="loader-text">Carregando cena...</span>
-              </div>
-              <img id="modal-full" src="" alt="Cena Completa" class="modal-img-full">
-            </div>
+            <div class="modal-loader" id="modal-full-loader"><div class="spinner"></div></div>
+            <img id="modal-full" src="" alt="Cena Completa" class="modal-img">
           </div>
+        </div>
+
+        <div class="modal-meta-strip" id="modal-meta">
+          <!-- Preenchido dinamicamente -->
         </div>
       </div>
     </div>
@@ -613,157 +1303,429 @@
     document.addEventListener("DOMContentLoaded", () => {
       let currentType = "all";
       let currentStatusFilter = null; // null, true, false
+      let allLoadedEvents = [];
+      let globalAnalyticsData = null;
+      let hourlyChartInstance = null;
+      let currentLeadTab = "persons";
 
+      // 1. Inicializar Telemetria do Hardware & Solar
+      async function loadHeaderTelemetry() {
+        try {
+          // Hardware
+          const statsRes = await fetch("/api/stats");
+          if (statsRes.ok) {
+            const stats = await statsRes.json();
+            const hw = stats.hardware || {};
+            const valHw = document.getElementById("val-hardware");
+            if (hw.name) {
+              const vramInfo = hw.allocated_mb ? ` (${Math.round(hw.allocated_mb)} MB)` : "";
+              valHw.textContent = `${hw.name}${vramInfo}`;
+            } else if (hw.type) {
+              valHw.textContent = hw.type;
+            }
+          }
+        } catch (e) {
+          console.warn("Telemetria de hardware indisponível:", e);
+        }
+
+        try {
+          // Usina Solar Huawei
+          const solarRes = await fetch("/api/solar/kiosk");
+          if (solarRes.ok) {
+            const solarData = await solarRes.json();
+            const powerVal = solarData.potencia_realtime || "0.00 kW";
+            const todayVal = solarData.rendimento_hoje || "0.0 kWh";
+            
+            document.getElementById("val-solar").textContent = powerVal;
+            document.getElementById("kpi-solar-power").innerHTML = `${parseFloat(powerVal) || 0.0} <span class="bento-unit">kW</span>`;
+            document.getElementById("kpi-solar-today").textContent = todayVal;
+
+            if (solarData.available) {
+              document.getElementById("solar-status-badge").textContent = "● GERAÇÃO ATIVA";
+              document.getElementById("solar-status-badge").style.color = "var(--accent-emerald)";
+            }
+          }
+        } catch (e) {
+          console.warn("Telemetria solar indisponível:", e);
+        }
+
+        try {
+          // Clima Local de Ji-Paraná
+          const weatherRes = await fetch("/api/weather/solar");
+          if (weatherRes.ok) {
+            const wData = await weatherRes.json();
+            if (wData.weather) {
+              const desc = `${wData.weather.temperature_c}°C • ${wData.weather.description || "Ji-Paraná"}`;
+              document.getElementById("solar-weather-desc").textContent = desc;
+            }
+          }
+        } catch (e) {
+          console.warn("Clima indisponível:", e);
+        }
+      }
+
+      // 2. Carregar Métricas do Dashboard (/api/stats/analytics)
       async function loadDashboard() {
         try {
           const res = await fetch("/api/stats/analytics");
           if (!res.ok) return;
           const data = await res.json();
+          globalAnalyticsData = data;
 
-          // Atualizar KPIs
-          document.getElementById("kpi-total").textContent = data.total_events || 0;
-          document.getElementById("kpi-today").textContent = data.events_today || 0;
+          // Totais
+          const total = data.total_events || 0;
+          const today = data.events_today || 0;
+          document.getElementById("kpi-total-val").textContent = total.toLocaleString("pt-BR");
+          document.getElementById("kpi-today-val").textContent = today.toLocaleString("pt-BR");
+          document.getElementById("badge-events-today").textContent = `+${today} hoje`;
 
+          // Taxa estimada
+          const rateVal = Math.round((today / (new Date().getHours() + 1)) * 10) / 10;
+          document.getElementById("kpi-rate-val").textContent = `${rateVal}/h`;
+
+          // Entidades
           const byEnt = data.by_entity || {};
           const persons = byEnt.person || 0;
           const vehicles = byEnt.vehicle || 0;
           const pets = byEnt.pet || 0;
 
-          document.getElementById("kpi-persons").textContent = persons;
-          document.getElementById("kpi-vehicles").textContent = vehicles;
-          document.getElementById("kpi-pets").textContent = pets;
+          document.getElementById("kpi-persons-val").textContent = persons.toLocaleString("pt-BR");
+          document.getElementById("kpi-vehicles-val").textContent = vehicles.toLocaleString("pt-BR");
+          document.getElementById("kpi-pets-val").textContent = pets.toLocaleString("pt-BR");
 
+          const pctPersons = total > 0 ? Math.round((persons / total) * 100) : 0;
+          document.getElementById("kpi-persons-pct").textContent = `${pctPersons}% do fluxo global`;
+
+          // Known vs Unknown (estimativas a partir de top_lists ou totais)
+          let knownCount = data.total_known || 0;
+          let unknownCount = data.total_unknown || 0;
+
+          document.getElementById("kpi-persons-known").textContent = knownCount;
+          document.getElementById("kpi-persons-unknown").textContent = unknownCount;
+
+          // Renderizar Gráficos & Câmeras
           renderHourlyChart(data.by_hour || []);
-          renderCameraBreakdown(data.by_camera || [], data.total_events || 1);
+          renderCameraBreakdown(data.by_camera || [], total || 1);
+          renderLeaderboard(currentLeadTab);
         } catch (e) {
-          console.error("Erro ao carregar dados do dashboard:", e);
+          console.error("Erro ao carregar dados analíticos:", e);
         }
       }
 
+      // 3. Renderizar Gráfico de Movimentação por Horário (Chart.js ou Fallback)
       function renderHourlyChart(hourlyData) {
-        const container = document.getElementById("hourly-bars");
-        container.innerHTML = "";
-
         const hourMap = {};
-        let maxCount = 1;
+        for (let h = 0; h < 24; h++) hourMap[h] = 0;
 
         hourlyData.forEach(item => {
           const hr = parseInt(item.hour, 10);
-          const cnt = parseInt(item.count, 10);
-          hourMap[hr] = cnt;
-          if (cnt > maxCount) maxCount = cnt;
+          if (!isNaN(hr)) hourMap[hr] = parseInt(item.count, 10);
         });
 
+        const labels = [];
+        const values = [];
         for (let h = 0; h < 24; h++) {
-          const count = hourMap[h] || 0;
-          const pct = Math.max(4, Math.round((count / maxCount) * 100));
+          labels.push(`${String(h).padStart(2, '0')}:00`);
+          values.push(hourMap[h]);
+        }
 
-          const col = document.createElement("div");
-          col.className = "hour-bar-col";
-          col.innerHTML = `
-            <div class="hour-tooltip">${count} detecções (${String(h).padStart(2, '0')}:00)</div>
-            <div class="hour-bar" style="height: ${pct}%;"></div>
-            <span class="hour-label">${String(h).padStart(2, '0')}</span>
-          `;
-          container.appendChild(col);
+        const ctx = document.getElementById("hourlyTrendsChart");
+        if (!ctx) return;
+
+        if (typeof Chart !== "undefined") {
+          if (hourlyChartInstance) {
+            hourlyChartInstance.data.labels = labels;
+            hourlyChartInstance.data.datasets[0].data = values;
+            hourlyChartInstance.update();
+            return;
+          }
+
+          const chartContext = ctx.getContext("2d");
+          const gradient = chartContext.createLinearGradient(0, 0, 0, 260);
+          gradient.addColorStop(0, "rgba(0, 240, 255, 0.45)");
+          gradient.addColorStop(0.65, "rgba(0, 240, 255, 0.08)");
+          gradient.addColorStop(1, "rgba(0, 240, 255, 0)");
+
+          hourlyChartInstance = new Chart(chartContext, {
+            type: "line",
+            data: {
+              labels: labels,
+              datasets: [{
+                label: "Detecções / Eventos",
+                data: values,
+                borderColor: "#00f0ff",
+                borderWidth: 2.2,
+                pointBackgroundColor: "#00f0ff",
+                pointBorderColor: "#0b0f19",
+                pointBorderWidth: 2,
+                pointRadius: 3.5,
+                pointHoverRadius: 6,
+                backgroundColor: gradient,
+                fill: true,
+                tension: 0.38
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { display: false },
+                tooltip: {
+                  backgroundColor: "rgba(11, 15, 25, 0.95)",
+                  borderColor: "rgba(0, 240, 255, 0.35)",
+                  borderWidth: 1,
+                  titleColor: "#00f0ff",
+                  bodyColor: "#f1f5f9",
+                  titleFont: { family: "'JetBrains Mono', monospace", size: 12 },
+                  bodyFont: { family: "'Outfit', sans-serif", size: 13 },
+                  padding: 10,
+                  displayColors: false,
+                  callbacks: {
+                    label: (context) => `⚡ ${context.parsed.y} detecções registradas`
+                  }
+                }
+              },
+              scales: {
+                x: {
+                  grid: { color: "rgba(255, 255, 255, 0.04)" },
+                  ticks: {
+                    color: "#64748b",
+                    font: { family: "'JetBrains Mono', monospace", size: 11 },
+                    maxRotation: 0,
+                    autoSkip: true,
+                    maxTicksLimit: 12
+                  }
+                },
+                y: {
+                  beginAtZero: true,
+                  grid: { color: "rgba(255, 255, 255, 0.04)" },
+                  ticks: {
+                    color: "#64748b",
+                    font: { family: "'JetBrains Mono', monospace", size: 11 },
+                    stepSize: 1
+                  }
+                }
+              }
+            }
+          });
+        } else {
+          // Fallback nativo de alta fidelidade caso o Chart.js esteja inacessível (ex: rede isolada)
+          const parent = ctx.parentElement;
+          let fallback = document.getElementById("chart-svg-fallback");
+          if (!fallback) {
+            fallback = document.createElement("div");
+            fallback.id = "chart-svg-fallback";
+            fallback.style.cssText = "display:flex; align-items:flex-end; gap:4px; height:100%; width:100%; padding-top:20px; border-bottom: 1px solid var(--border-subtle);";
+            parent.appendChild(fallback);
+            ctx.style.display = "none";
+          }
+          fallback.innerHTML = "";
+          const maxVal = Math.max(1, ...values);
+          values.forEach((v, idx) => {
+            const pct = Math.max(4, Math.round((v / maxVal) * 100));
+            const bar = document.createElement("div");
+            bar.style.cssText = `flex:1; height:${pct}%; background:linear-gradient(180deg, var(--accent-cyan), rgba(0,240,255,0.1)); border-radius:3px 3px 0 0; position:relative; cursor:pointer; transition: height 0.3s ease;`;
+            bar.title = `${v} detecções (${String(idx).padStart(2,'0')}:00)`;
+            fallback.appendChild(bar);
+          });
         }
       }
 
+      // 4. Renderizar Distribuição por Câmeras
       function renderCameraBreakdown(camData, total) {
         const container = document.getElementById("camera-breakdown");
         container.innerHTML = "";
 
-        if (camData.length === 0) {
-          container.innerHTML = "<p style='color: var(--text-dim); font-size: 0.85rem;'>Sem dados de câmeras ainda.</p>";
+        if (!camData || camData.length === 0) {
+          container.innerHTML = "<p style='color: var(--text-dim); font-size: 0.8rem;'>Sem histórico de câmeras.</p>";
           return;
         }
 
-        const colors = ["var(--accent-cyan)", "var(--accent-green)", "var(--accent-amber)"];
+        const colors = ["var(--accent-cyan)", "var(--accent-emerald)", "#38bdf8", "var(--accent-purple)"];
 
         camData.forEach((item, idx) => {
-          const pct = Math.round((item.count / total) * 100);
+          const pct = Math.max(1, Math.round((item.count / total) * 100));
           const color = colors[idx % colors.length];
 
           const el = document.createElement("div");
-          el.className = "cam-bar-item";
+          el.className = "cam-dist-item";
           el.innerHTML = `
-            <div class="cam-bar-header">
-              <span>${item.camera_name}</span>
-              <strong>${item.count} (${pct}%)</strong>
+            <div class="cam-dist-info">
+              <span class="cam-dist-name">
+                <span style="width: 8px; height: 8px; border-radius: 50%; background: ${color}; display: inline-block;"></span>
+                ${item.camera_name || "Câmera " + item.camera_id}
+              </span>
+              <span class="cam-dist-metric"><strong>${item.count}</strong> (${pct}%)</span>
             </div>
-            <div class="cam-bar-track">
-              <div class="cam-bar-fill" style="width: ${pct}%; background: ${color};"></div>
+            <div class="cam-track-bar">
+              <div class="cam-fill-bar" style="width: ${pct}%; background: ${color};"></div>
             </div>
           `;
           container.appendChild(el);
         });
       }
 
+      // 5. Renderizar Leaderboard (Mais Frequentes)
+      function renderLeaderboard(type) {
+        const container = document.getElementById("leaderboard-container");
+        container.innerHTML = "";
+
+        if (!globalAnalyticsData) return;
+
+        let items = [];
+        if (type === "persons") items = globalAnalyticsData.top_persons || [];
+        else if (type === "vehicles") items = globalAnalyticsData.top_vehicles || [];
+        else if (type === "pets") items = globalAnalyticsData.top_pets || [];
+
+        if (items.length === 0) {
+          container.innerHTML = `<div style="color: var(--text-dim); font-size: 0.78rem; padding: 14px 0; text-align: center;">Nenhum registro frequente ainda.</div>`;
+          return;
+        }
+
+        items.slice(0, 5).forEach((item, idx) => {
+          const row = document.createElement("div");
+          row.className = "lead-row";
+
+          let icon = "👤";
+          let name = item.person_name || "Desconhecido";
+          let extra = "";
+
+          if (type === "vehicles") {
+            icon = "🚗";
+            if (item.license_plate) extra = `<span class="badge-plate-mercosul" style="font-size: 0.65rem; margin-left: 6px;"><span class="plate-code">${item.license_plate}</span></span>`;
+          } else if (type === "pets") {
+            icon = "🐾";
+          }
+
+          row.innerHTML = `
+            <div class="lead-ident">
+              <span style="font-size: 0.9rem;">${icon}</span>
+              <strong style="color: #fff;">${name}</strong>
+              ${extra}
+            </div>
+            <div class="lead-count">
+              <span><strong>${item.count}</strong> aparições</span>
+            </div>
+          `;
+          container.appendChild(row);
+        });
+      }
+
+      // Listener das tabs do Leaderboard
+      document.querySelectorAll(".lead-tab-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          document.querySelectorAll(".lead-tab-btn").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          currentLeadTab = btn.dataset.lead;
+          renderLeaderboard(currentLeadTab);
+        });
+      });
+
+      // 6. Carregar Tabela de Eventos Forenses
       async function loadEventsTable() {
         try {
-          let url = "/api/events?limit=50";
+          let url = "/api/events?limit=80";
           if (currentType !== "all") url += `&entity_type=${currentType}`;
           if (currentStatusFilter !== null) url += `&is_known=${currentStatusFilter}`;
 
           const res = await fetch(url);
           if (!res.ok) return;
           const data = await res.json();
-
-          const tbody = document.getElementById("audit-table-body");
-          tbody.innerHTML = "";
-
-          if (!data.events || data.events.length === 0) {
-            tbody.innerHTML = "<tr><td colspan='7' style='text-align:center; color:var(--text-dim); padding: 30px;'>Nenhum registro encontrado com os filtros selecionados.</td></tr>";
-            return;
-          }
-
-          data.events.forEach(evt => {
-            const tr = document.createElement("tr");
-            const timeObj = new Date(evt.timestamp);
-            const formattedTime = isNaN(timeObj.getTime()) ? evt.timestamp : timeObj.toLocaleString("pt-BR");
-            const cropUrl = `/api/events/${evt.event_id || evt.id}/crop`;
-
-            // Badges
-            let badgeClass = "badge-unknown";
-            let typeLabel = "👤 Pessoa";
-            if (evt.entity_type === "vehicle") typeLabel = "🚗 Veículo";
-            if (evt.entity_type === "pet") typeLabel = "🐾 Pet";
-
-            if (evt.is_known) {
-              if (evt.entity_type === "person") badgeClass = "badge-person-known";
-              else if (evt.entity_type === "vehicle") badgeClass = "badge-vehicle-known";
-              else if (evt.entity_type === "pet") badgeClass = "badge-pet-known";
-            }
-
-            const plateHtml = evt.license_plate 
-              ? `<span class="badge-plate">${evt.license_plate}</span>`
-              : `<span style="color: var(--text-dim);">-</span>`;
-
-            const eventId = evt.event_id || evt.id;
-            tr.innerHTML = `
-              <td>
-                <img src="${cropUrl}" alt="Crop" class="table-thumb" 
-                     onmouseenter="prefetchEvent('${eventId}')" 
-                     onclick="openModal('${eventId}', '${evt.person_name}')">
-              </td>
-              <td><span style="font-size: 0.78rem; color: var(--text-muted);">${typeLabel}</span></td>
-              <td><span class="${badgeClass}">${evt.person_name}</span></td>
-              <td>${plateHtml}</td>
-              <td>${evt.camera_name}</td>
-              <td style="font-family: var(--font-mono); font-size: 0.8rem;">${formattedTime}</td>
-              <td style="font-family: var(--font-mono);">${Math.round((evt.confidence || 0) * 100)}%</td>
-            `;
-            tbody.appendChild(tr);
-          });
+          allLoadedEvents = data.events || [];
+          renderEventsTable(allLoadedEvents);
         } catch (e) {
           console.error("Erro ao carregar tabela:", e);
         }
       }
 
-      // Filtros
-      document.querySelectorAll(".filter-tab").forEach(tab => {
+      function renderEventsTable(events) {
+        const tbody = document.getElementById("audit-table-body");
+        tbody.innerHTML = "";
+
+        const searchTerm = (document.getElementById("audit-search").value || "").trim().toLowerCase();
+
+        const filtered = events.filter(evt => {
+          if (!searchTerm) return true;
+          const name = (evt.person_name || "").toLowerCase();
+          const plate = (evt.license_plate || "").toLowerCase();
+          const cam = (evt.camera_name || "").toLowerCase();
+          return name.includes(searchTerm) || plate.includes(searchTerm) || cam.includes(searchTerm);
+        });
+
+        document.getElementById("audit-count-info").textContent = `Exibindo ${filtered.length} de ${events.length} registros`;
+
+        if (filtered.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-dim); padding: 36px;">Nenhum evento encontrado com os filtros e busca aplicados.</td></tr>`;
+          return;
+        }
+
+        filtered.forEach(evt => {
+          const tr = document.createElement("tr");
+          const eventId = evt.event_id || evt.id;
+          const cropUrl = `/api/events/${eventId}/crop`;
+
+          // Data e hora
+          const timeObj = new Date(evt.timestamp);
+          const formattedTime = isNaN(timeObj.getTime()) ? evt.timestamp : timeObj.toLocaleString("pt-BR");
+
+          // Badges e Categorias
+          let typeLabel = "👤 Pessoa";
+          let badgeClass = "unknown";
+          if (evt.entity_type === "vehicle") {
+            typeLabel = "🚗 Veículo";
+            if (evt.is_known) badgeClass = "vehicle-known";
+          } else if (evt.entity_type === "pet") {
+            typeLabel = "🐾 Pet";
+            if (evt.is_known) badgeClass = "pet-known";
+          } else {
+            if (evt.is_known) badgeClass = "person-known";
+          }
+
+          // Placa Mercosul
+          let plateHtml = `<span style="color: var(--text-dim); font-size: 0.8rem;">—</span>`;
+          if (evt.license_plate) {
+            plateHtml = `
+              <div class="badge-plate-mercosul">
+                <span class="plate-top">BRASIL</span>
+                <span class="plate-code">${evt.license_plate}</span>
+              </div>
+            `;
+          }
+
+          // Confiança da IA
+          const confPct = Math.round((evt.confidence || 0) * 100);
+
+          tr.innerHTML = `
+            <td>
+              <img src="${cropUrl}" alt="Evidência" class="thumb-evidence" 
+                   onmouseenter="prefetchEvent('${eventId}')" 
+                   onclick="openForensicModal('${eventId}', '${evt.person_name}', '${evt.camera_name}', '${formattedTime}', '${confPct}%', '${evt.license_plate || ''}')">
+            </td>
+            <td><span style="font-size: 0.76rem; color: var(--text-muted); font-weight: 500;">${typeLabel}</span></td>
+            <td><span class="badge-forensic ${badgeClass}">${evt.person_name}</span></td>
+            <td>${plateHtml}</td>
+            <td><span style="color: var(--text-main); font-weight: 500;">${evt.camera_name || "Câmera"}</span></td>
+            <td style="font-family: var(--font-mono); font-size: 0.78rem; color: var(--text-muted);">${formattedTime}</td>
+            <td>
+              <div class="confidence-meter">
+                <div class="conf-track"><div class="conf-fill" style="width: ${confPct}%;"></div></div>
+                <span>${confPct}%</span>
+              </div>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+      }
+
+      // Busca Instantânea
+      document.getElementById("audit-search").addEventListener("input", () => {
+        renderEventsTable(allLoadedEvents);
+      });
+
+      // Filtros de Pills
+      document.querySelectorAll(".pill-tab").forEach(tab => {
         tab.addEventListener("click", () => {
-          document.querySelectorAll(".filter-tab").forEach(t => t.classList.remove("active"));
+          document.querySelectorAll(".pill-tab").forEach(t => t.classList.remove("active"));
           tab.classList.add("active");
 
           if (tab.dataset.type) {
@@ -779,58 +1741,7 @@
         });
       });
 
-      // Recarregar cadastros de fotos
-      document.getElementById("btn-reload-entities").addEventListener("click", async () => {
-        const btn = document.getElementById("btn-reload-entities");
-        btn.textContent = "Sincronizando...";
-        try {
-          const res = await fetch("/api/faces/reload", { method: "POST" });
-          const data = await res.json();
-          alert(`Sincronização concluída!\n👤 Pessoas: ${data.persons_loaded}\n🚗 Veículos: ${data.vehicles_loaded}\n🐾 Pets: ${data.pets_loaded}`);
-        } catch (err) {
-          alert("Erro ao sincronizar cadastros.");
-        } finally {
-          btn.innerHTML = `
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="23 4 23 10 17 10"/>
-              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-            </svg>
-            Sincronizar Cadastros
-          `;
-          loadDashboard();
-          loadEventsTable();
-        }
-      });
-
-      // Limpar todo o Banco de Dados SQLite e Evidências
-      document.getElementById("btn-clear-db").addEventListener("click", async () => {
-        const confirmed = confirm(
-          "⚠️ ATENÇÃO: Deseja realmente APAGAR TODO O HISTÓRICO de eventos e fotos gravadas no banco de dados SQLite?\n\nEsta operação é definitiva e não pode ser revertida!"
-        );
-        if (!confirmed) return;
-
-        const btn = document.getElementById("btn-clear-db");
-        btn.textContent = "Limpando...";
-        try {
-          const res = await fetch("/api/events/clear", { method: "POST" });
-          const data = await res.json();
-          alert(data.message || "Banco de dados limpo com sucesso!");
-          loadDashboard();
-          loadEventsTable();
-        } catch (err) {
-          alert("Erro ao limpar banco de dados: " + err);
-        } finally {
-          btn.innerHTML = `
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="3 6 5 6 21 6"></polyline>
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-            </svg>
-            Limpar Banco de Dados
-          `;
-        }
-      });
-
-      // Prefetch inteligente em background
+      // Prefetch inteligente da cena completa
       const prefetchedDashEvents = new Set();
       window.prefetchEvent = function(id) {
         if (!id || prefetchedDashEvents.has(id)) return;
@@ -839,21 +1750,31 @@
         img.src = `/api/events/${id}/full`;
       };
 
-      // Modal
+      // Modal Forense
       const modalCropImg = document.getElementById("modal-crop");
       const modalFullImg = document.getElementById("modal-full");
       const modalCropLoader = document.getElementById("modal-crop-loader");
       const modalFullLoader = document.getElementById("modal-full-loader");
       const modalFullRawLink = document.getElementById("modal-full-raw-link");
 
-      window.openModal = function(id, name) {
+      window.openForensicModal = function(id, name, camera, time, conf, plate) {
         document.getElementById("modal-name").textContent = `Evidência: ${name}`;
+        document.getElementById("modal-camera").textContent = camera;
+        document.getElementById("modal-time").textContent = time;
 
         if (modalFullRawLink) {
           modalFullRawLink.href = `/api/events/${id}/full?raw=true`;
         }
 
-        // Limpa estado anterior e mostra loaders
+        // Metadados no rodapé do modal
+        const metaStrip = document.getElementById("modal-meta");
+        metaStrip.innerHTML = `
+          <span>ID do Evento: <strong>${id}</strong></span>
+          <span>Confiança: <strong>${conf}</strong></span>
+          ${plate ? `<span>Placa: <strong>${plate}</strong></span>` : ''}
+        `;
+
+        // Loaders
         modalCropImg.classList.remove("loaded");
         modalFullImg.classList.remove("loaded");
         if (modalCropLoader) modalCropLoader.classList.remove("hidden");
@@ -878,7 +1799,6 @@
         modalCropImg.src = `/api/events/${id}/crop`;
         modalFullImg.src = `/api/events/${id}/full`;
 
-        // Se a imagem já estiver em cache, exibe instantaneamente
         if (modalCropImg.complete && modalCropImg.naturalWidth > 0) {
           modalCropImg.classList.add("loaded");
           if (modalCropLoader) modalCropLoader.classList.add("hidden");
@@ -895,12 +1815,72 @@
         document.getElementById("dash-modal").classList.remove("active");
         modalCropImg.src = "";
         modalFullImg.src = "";
-        modalCropImg.classList.remove("loaded");
-        modalFullImg.classList.remove("loaded");
       });
 
+      // Fechar modal com Escape ou clique fora
+      document.getElementById("dash-modal").addEventListener("click", (e) => {
+        if (e.target.id === "dash-modal") {
+          document.getElementById("dash-modal").classList.remove("active");
+          modalCropImg.src = "";
+          modalFullImg.src = "";
+        }
+      });
+
+      // Ações do Header (Sincronizar e Limpar)
+      document.getElementById("btn-sync-entities").addEventListener("click", async () => {
+        const btn = document.getElementById("btn-sync-entities");
+        const originalHtml = btn.innerHTML;
+        btn.textContent = "Sincronizando...";
+        try {
+          const res = await fetch("/api/faces/reload", { method: "POST" });
+          const data = await res.json();
+          alert(`Sincronização concluída com sucesso!\n\n👤 Pessoas cadastradas: ${data.persons_loaded}\n🚗 Veículos cadastrados: ${data.vehicles_loaded}\n🐾 Pets cadastrados: ${data.pets_loaded}`);
+          loadDashboard();
+          loadEventsTable();
+        } catch (err) {
+          alert("Erro ao sincronizar cadastros.");
+        } finally {
+          btn.innerHTML = originalHtml;
+        }
+      });
+
+      document.getElementById("btn-purge-db").addEventListener("click", async () => {
+        const confirmed = confirm(
+          "⚠️ ATENÇÃO: Deseja realmente APAGAR TODO O HISTÓRICO de eventos, fotos e evidências do banco SQLite?\n\nEsta operação é definitiva e irreversível!"
+        );
+        if (!confirmed) return;
+
+        const btn = document.getElementById("btn-purge-db");
+        btn.textContent = "Limpando...";
+        try {
+          const res = await fetch("/api/events/clear", { method: "POST" });
+          const data = await res.json();
+          alert(data.message || "Banco de dados limpo com sucesso!");
+          loadDashboard();
+          loadEventsTable();
+        } catch (err) {
+          alert("Erro ao limpar banco de dados: " + err);
+        } finally {
+          btn.innerHTML = `
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+            Limpar Base
+          `;
+        }
+      });
+
+      // Inicialização
+      loadHeaderTelemetry();
       loadDashboard();
       loadEventsTable();
+
+      // Polling sutil a cada 30 segundos
+      setInterval(() => {
+        loadHeaderTelemetry();
+        loadDashboard();
+      }, 30000);
     });
   </script>
 </body>
