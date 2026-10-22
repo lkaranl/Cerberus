@@ -669,6 +669,42 @@ document.addEventListener("DOMContentLoaded", () => {
     }, 4000);
   }
 
+  function parseRadarEvent(evt) {
+    const isVehicle = evt.entity_type === "vehicle";
+    const isPet = evt.entity_type === "pet";
+    const isResident = Boolean(evt.is_known);
+
+    let badgeClass = "unknown";
+    let badgeText = "DESCONHECIDO";
+    let primaryTitle = "";
+
+    if (isResident) {
+      badgeClass = "resident";
+      badgeText = "MORADOR";
+      primaryTitle = evt.person_name || "Morador";
+    } else if (isVehicle) {
+      badgeClass = "vehicle";
+      badgeText = "VEÍCULO";
+      if (evt.license_plate) {
+        primaryTitle = `🚗 ${evt.license_plate}`;
+      } else if (evt.person_name && !evt.person_name.toLowerCase().includes("desconhecido")) {
+        primaryTitle = evt.person_name;
+      }
+    } else if (isPet) {
+      badgeClass = "pet";
+      badgeText = "ANIMAL";
+      if (evt.person_name && !evt.person_name.toLowerCase().includes("desconhecido")) {
+        primaryTitle = evt.person_name;
+      }
+    } else {
+      badgeClass = "unknown";
+      badgeText = "DESCONHECIDO";
+      primaryTitle = "";
+    }
+
+    return { badgeClass, badgeText, primaryTitle };
+  }
+
   function renderRadarItem(evt, isNew = false) {
     const eventId = evt.event_id || evt.id;
     const item = document.createElement("div");
@@ -681,28 +717,21 @@ document.addEventListener("DOMContentLoaded", () => {
       : timeObj.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
     const cropUrl = `/api/events/${eventId}/crop`;
-
-    let badgeClass = "unknown";
-    let typeName = evt.person_name || "Desconhecido";
-
-    if (evt.entity_type === "vehicle") {
-      badgeClass = "vehicle";
-      typeName = evt.license_plate ? `🚗 ${evt.license_plate}` : "🚗 Veículo";
-    } else if (evt.is_known) {
-      badgeClass = "resident";
-    }
+    const { badgeClass, badgeText, primaryTitle } = parseRadarEvent(evt);
 
     item.innerHTML = `
-      <img class="radar-item-thumb" src="${cropUrl}" alt="Crop" loading="lazy" onerror="this.src='/static/img/placeholder.png'">
+      <img class="radar-item-thumb" src="${cropUrl}" alt="Evidência" loading="lazy" onerror="this.src='/static/img/placeholder.png'">
       <div class="radar-item-details">
-        <span class="radar-item-name">${typeName}</span>
+        <div class="radar-item-topline">
+          <span class="radar-item-badge ${badgeClass}">${badgeText}</span>
+          ${primaryTitle ? `<span class="radar-item-name">${primaryTitle}</span>` : ""}
+        </div>
         <span class="radar-item-meta">
           <span>${evt.camera_name || evt.camera_id}</span>
           <span>•</span>
           <span>${timeFormatted}</span>
         </span>
       </div>
-      <span class="radar-item-badge ${badgeClass}">${badgeClass.toUpperCase()}</span>
     `;
 
     item.addEventListener("click", () => openModal(evt));
@@ -725,23 +754,13 @@ document.addEventListener("DOMContentLoaded", () => {
     const img = item.querySelector(".radar-item-thumb");
     if (img) img.src = `/api/events/${eventId}/crop?t=${Date.now()}`;
 
-    const nameEl = item.querySelector(".radar-item-name");
-    const badgeEl = item.querySelector(".radar-item-badge");
-
-    let badgeClass = "unknown";
-    let typeName = evt.person_name || "Desconhecido";
-
-    if (evt.entity_type === "vehicle") {
-      badgeClass = "vehicle";
-      typeName = evt.license_plate ? `🚗 ${evt.license_plate}` : "🚗 Veículo";
-    } else if (evt.is_known) {
-      badgeClass = "resident";
-    }
-
-    if (nameEl) nameEl.textContent = typeName;
-    if (badgeEl) {
-      badgeEl.className = `radar-item-badge ${badgeClass}`;
-      badgeEl.textContent = badgeClass.toUpperCase();
+    const { badgeClass, badgeText, primaryTitle } = parseRadarEvent(evt);
+    const toplineEl = item.querySelector(".radar-item-topline");
+    if (toplineEl) {
+      toplineEl.innerHTML = `
+        <span class="radar-item-badge ${badgeClass}">${badgeText}</span>
+        ${primaryTitle ? `<span class="radar-item-name">${primaryTitle}</span>` : ""}
+      `;
     }
 
     if (state.activeModalEventId === eventId) {
