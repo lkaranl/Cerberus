@@ -610,13 +610,13 @@ document.addEventListener("DOMContentLoaded", () => {
   // --- 7. Radar de Presença em Tempo Real ---
   async function loadRecentEvents() {
     try {
-      const res = await fetch("/api/events?limit=15");
+      const res = await fetch("/api/events?limit=4");
       if (!res.ok) return;
       const data = await res.json();
 
       if (data.events && data.events.length > 0) {
         if (dom.radarEmpty) dom.radarEmpty.remove();
-        data.events.forEach(evt => {
+        data.events.slice(0, 4).forEach(evt => {
           renderRadarItem(evt, false);
         });
       }
@@ -735,18 +735,19 @@ document.addEventListener("DOMContentLoaded", () => {
     item.innerHTML = `
       <div class="radar-thumb-wrap">
         <img class="radar-item-thumb" src="${cropUrl}" alt="Evidência" loading="lazy" onerror="this.src='/static/img/placeholder.png'">
-        <div class="radar-thumb-overlay">
-          <span class="radar-item-badge ${badgeClass}">${badgeText}</span>
-          <span class="radar-thumb-time mono">${timeFormatted}</span>
-        </div>
       </div>
-      <div class="radar-item-info">
+      <div class="radar-item-content">
+        <div class="radar-card-top">
+          <span class="radar-item-badge ${badgeClass}">${badgeText}</span>
+          ${primaryTitle ? `<span class="radar-item-name" title="${primaryTitle}">${primaryTitle}</span>` : ""}
+        </div>
         <div class="radar-item-cam-row">
           <span class="radar-cam-dot"></span>
           <span class="radar-item-camera-label">${camName}</span>
         </div>
-        <div class="radar-item-extra">
-          ${primaryTitle ? `<span class="radar-item-name">${primaryTitle}</span>` : (timeAgo ? `<span class="radar-item-ago">${timeAgo}</span>` : `<span class="radar-item-inspect-btn">VER ↗</span>`)}
+        <div class="radar-card-bottom">
+          <span class="radar-item-time mono">${timeFormatted}</span>
+          ${timeAgo ? `<span class="radar-item-ago">${timeAgo}</span>` : ""}
         </div>
       </div>
     `;
@@ -755,11 +756,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (isNew) {
       dom.radarFeed.prepend(item);
-      while (dom.radarFeed.children.length > 20) {
+      while (dom.radarFeed.children.length > 4) {
         dom.radarFeed.removeChild(dom.radarFeed.lastChild);
       }
     } else {
-      dom.radarFeed.appendChild(item);
+      if (dom.radarFeed.children.length < 4) {
+        dom.radarFeed.appendChild(item);
+      }
     }
   }
 
@@ -778,9 +781,9 @@ document.addEventListener("DOMContentLoaded", () => {
       badgeEl.textContent = badgeText;
     }
 
-    const extraEl = item.querySelector(".radar-item-extra");
-    if (extraEl && primaryTitle) {
-      extraEl.innerHTML = `<span class="radar-item-name">${primaryTitle}</span>`;
+    const nameEl = item.querySelector(".radar-item-name");
+    if (nameEl && primaryTitle) {
+      nameEl.textContent = primaryTitle;
     }
 
     if (state.activeModalEventId === eventId) {

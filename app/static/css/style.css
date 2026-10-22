@@ -720,23 +720,14 @@ body.clean-cctv-body {
   opacity: 0.8;
 }
 
-/* Feed em Grid 2x2 de Alta Visibilidade */
+/* Feed em Grid 2x2 Fixo para TV (Sem Scroll, 4 Eventos Imediatos) */
 .radar-events-feed {
   flex: 1;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-auto-rows: minmax(134px, 145px);
-  gap: 8px;
-  overflow-y: auto;
-  padding-right: 4px;
-}
-
-.radar-events-feed::-webkit-scrollbar {
-  width: 4px;
-}
-.radar-events-feed::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 4px;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  overflow: hidden;
 }
 
 .radar-empty {
@@ -747,103 +738,91 @@ body.clean-cctv-body {
   justify-content: center;
   height: 100%;
   color: var(--text-dim);
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   text-align: center;
 }
 
-/* Item do Radar em Card 2x2 com HUD de Evidência */
+/* Card 2x2 com Crop Quadrado e Alta Legibilidade para TV */
 .radar-item {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
   background: rgba(255, 255, 255, 0.035);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
-  padding: 6px;
-  gap: 6px;
-  cursor: pointer;
-  position: relative;
+  padding: 8px;
+  height: 100%;
+  box-sizing: border-box;
   overflow: hidden;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
 }
 
 .radar-item:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.22);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.6);
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.20);
 }
 
-/* Moldura Superior da Evidência (Panorâmica Completa) */
+/* Moldura Quadrada da Evidência: Nunca corta o crop */
 .radar-thumb-wrap {
-  position: relative;
-  width: 100%;
-  flex: 1;
-  min-height: 88px;
-  border-radius: 8px;
+  width: 118px;
+  height: 100%;
+  max-height: 128px;
+  aspect-ratio: 1 / 1;
+  flex-shrink: 0;
+  border-radius: 9px;
   overflow: hidden;
-  background: #000;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  transition: border-color 0.2s;
-}
-
-.radar-item:hover .radar-thumb-wrap {
-  border-color: var(--accent-emerald);
+  background: #020408;
+  border: 1.5px solid rgba(255, 255, 255, 0.14);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
 }
 
 .radar-item-thumb {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain; /* NUNCA CORTA NENHUM PEDAÇO DO CROP */
   display: block;
-  transition: transform 0.25s ease;
 }
 
-.radar-item:hover .radar-item-thumb {
-  transform: scale(1.04);
-}
-
-/* HUD Overlay sobre a Imagem de Evidência */
-.radar-thumb-overlay {
-  position: absolute;
-  top: 5px;
-  left: 5px;
-  right: 5px;
+/* Bloco de Informações Otimizado para Leitura em TV */
+.radar-item-content {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
   display: flex;
+  flex-direction: column;
   justify-content: space-between;
-  align-items: center;
-  pointer-events: none;
-  z-index: 2;
+  padding: 1px 0;
 }
 
-.radar-thumb-time {
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
+.radar-card-top {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.radar-item-name {
+  font-size: 0.84rem;
   font-weight: 700;
   color: #fff;
-  background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(4px);
-  padding: 1px 6px;
-  border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  letter-spacing: 0.5px;
-}
-
-/* Rodapé do Card */
-.radar-item-info {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 2px 2px;
-  gap: 6px;
-  min-height: 20px;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .radar-item-cam-row {
   display: flex;
   align-items: center;
-  gap: 5px;
-  font-size: 0.72rem;
+  gap: 6px;
+  font-size: 0.74rem;
   color: var(--text-dim);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -851,8 +830,8 @@ body.clean-cctv-body {
 }
 
 .radar-cam-dot {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--accent-emerald);
   box-shadow: 0 0 6px var(--accent-emerald);
@@ -865,44 +844,27 @@ body.clean-cctv-body {
   white-space: nowrap;
 }
 
-.radar-item-extra {
+.radar-card-bottom {
   display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
+  flex-direction: column;
+  gap: 1px;
+  align-items: flex-start;
 }
 
-.radar-item-name {
-  font-size: 0.76rem;
-  font-weight: 700;
-  color: #fff;
-  letter-spacing: 0.3px;
-  white-space: nowrap;
+.radar-item-time {
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.95);
+  letter-spacing: 0.5px;
+  line-height: 1.1;
 }
 
 .radar-item-ago {
   font-family: var(--font-mono);
-  font-size: 0.62rem;
+  font-size: 0.64rem;
   color: var(--text-dim);
   letter-spacing: 0.3px;
-}
-
-.radar-item-inspect-btn {
-  font-family: var(--font-mono);
-  font-size: 0.60rem;
-  font-weight: 700;
-  color: var(--accent-cyan);
-  background: rgba(0, 210, 255, 0.10);
-  border: 1px solid rgba(0, 210, 255, 0.30);
-  padding: 1px 6px;
-  border-radius: 3px;
-  letter-spacing: 0.5px;
-  transition: all 0.2s;
-}
-
-.radar-item:hover .radar-item-inspect-btn {
-  background: var(--accent-cyan);
-  color: #000;
 }
 
 /* Badges Temáticas de Estado */
@@ -1085,12 +1047,12 @@ body.clean-cctv-body {
   }
 
   .radar-events-feed {
-    grid-auto-rows: minmax(120px, 132px);
-    gap: 6px;
+    gap: 8px;
   }
 
   .radar-thumb-wrap {
-    min-height: 74px;
+    width: 95px;
+    max-height: 105px;
   }
 }
 
