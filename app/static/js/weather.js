@@ -163,7 +163,7 @@ class CerberusSolarWeatherWidget {
             <span class="forecast-day-name">${d1.day_label || 'Amanhã'}</span>
             <span class="forecast-day-icon" title="${d1.weather_desc || 'Tempo'}">${d1.weather_icon || '🌤️'}</span>
             <span class="forecast-day-temp">${d1.temp_max || 38}°<small>/${d1.temp_min || 28}°</small></span>
-            <span class="forecast-pill" style="color: ${d1.solar_color || '#FFB300'}">${d1.solar_potential || 'Excelente'}</span>
+            <span class="forecast-pill" style="color: ${d1.solar_color || '#FFB300'}; border-color: ${d1.solar_color || '#FFB300'}40">${(d1.solar_potential || 'Alto').toUpperCase() === 'EXCELENTE' ? 'ALTO' : (d1.solar_potential || 'BOM').toUpperCase()}</span>
           </div>
 
           <div class="forecast-strip-sep"></div>
@@ -172,7 +172,7 @@ class CerberusSolarWeatherWidget {
             <span class="forecast-day-name">${d2.day_label || 'Depois'}</span>
             <span class="forecast-day-icon" title="${d2.weather_desc || 'Tempo'}">${d2.weather_icon || '⛅'}</span>
             <span class="forecast-day-temp">${d2.temp_max || 40}°<small>/${d2.temp_min || 28}°</small></span>
-            <span class="forecast-pill" style="color: ${d2.solar_color || '#FFA000'}">${d2.solar_potential || 'Bom'}</span>
+            <span class="forecast-pill" style="color: ${d2.solar_color || '#FFA000'}; border-color: ${d2.solar_color || '#FFA000'}40">${(d2.solar_potential || 'Bom').toUpperCase() === 'EXCELENTE' ? 'ALTO' : (d2.solar_potential || 'BOM').toUpperCase()}</span>
           </div>
         </div>
       </div>
