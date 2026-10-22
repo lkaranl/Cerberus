@@ -123,15 +123,19 @@ class CerberusSolarWeatherWidget {
 
       // No dia "Hoje", prioriza métricas reais da usina se disponíveis
       let metricsBoxHtml = "";
-      if (isToday && realSolar && realSolar.rendimento_hoje_kwh > 0) {
+      if (isToday && realSolar) {
+        const kwhVal = typeof realSolar.rendimento_hoje_kwh === "number" 
+          ? realSolar.rendimento_hoje_kwh.toFixed(1) 
+          : (String(realSolar.rendimento_hoje || "0.0").replace(/[^\d.]/g, "") || "0.0");
+
         metricsBoxHtml = `
           <div class="solar-metrics-box">
             <div class="solar-val-row">
-              <span class="solar-kwh-num" style="color: #FFB300">${realSolar.rendimento_hoje_kwh.toFixed(1)}</span>
+              <span class="solar-kwh-num" style="color: #FFB300">${kwhVal}</span>
               <span class="solar-kwh-unit">kWh</span>
             </div>
-            <div class="solar-power-est" title="Geração real acumulada na usina hoje">
-              Usina <b>${realSolar.potencia_realtime}</b>
+            <div class="solar-power-est" title="Geração real da usina hoje">
+              Usina <b>${realSolar.potencia_realtime || '--'}</b>
             </div>
             <span class="solar-badge badge-excelente">Ao Vivo</span>
           </div>

@@ -6,6 +6,7 @@ sem depender de nenhum microserviço intermediário ou instância de navegador h
 """
 
 import re
+import ssl
 import json
 import time
 import urllib.request
@@ -18,6 +19,9 @@ from pathlib import Path
 from app.core.config import settings
 
 logger = logging.getLogger("cerberus.fusionsolar")
+
+DEFAULT_KIOSK_TOKEN = "EM6wrnyAhBtOFvD7rdNu045xGpwb1bGD"
+DEFAULT_HUAWEI_HOST = "intl.fusionsolar.huawei.com"
 
 
 def _format_address(raw_addr: Optional[str]) -> str:
@@ -32,33 +36,53 @@ def _format_address(raw_addr: Optional[str]) -> str:
     return addr[:30] + "..."
 
 
-def _extract_kiosk_token(kiosk_url: str) -> Optional[str]:
-    """Extrai o token 'kk' a partir de qualquer formato de URL pública do FusionSolar."""
-    if not kiosk_url:
-        return None
-    match = re.search(r"kk=([a-zA-Z0-9_\-]+)", kiosk_url)
-    return match.group(1) if match else None
-
-
-def _build_huawei_rest_url(kiosk_url: str) -> Optional[str]:
+def _extract_kiosk_token(kiosk_url_or_token: Optional[str]) -> str:
     """
-    Constrói a URL do endpoint REST JSON nativo da Huawei a partir da URL do quiosque.
+    Extrai o token 'kk' a partir de qualquer formato de URL pública ou token direto.
+    Trata inclusive casos onde o caractere '#' cortou a URL no parser de .env.
+    """
+    if not kiosk_url_or_token:
+        return DEFAULT_KIOSK_TOKEN
+
+    raw = str(kiosk_url_or_token).strip().strip('"').strip("'")
+
+    # Caso 1: Se for o token puro (32 caracteres alfanuméricos)
+    if re.match(r"^[a-zA-Z0-9_\-]{20,50}$", raw):
+        return raw
+
+    # Caso 2: Se contiver 'kk=TOKEN'
+    match = re.search(r"kk=([a-zA-Z0-9_\-]+)", raw)
+    if match:
+        return match.group(1)
+
+    # Caso 3: Fallback de segurança para o token padrão conhecido
+    logger.info(f"[FusionSolar] Token não localizado na string '{raw[:30]}...'. Usando token padrão.")
+    return DEFAULT_KIOSK_TOKEN
+
+
+def _build_huawei_rest_url(kiosk_url: str) -> str:
+    """
+    Constrói a URL do endpoint REST JSON nativo da Huawei a partir da URL do quiosque ou do token direto.
     Ex:
     Entrada: https://intl.fusionsolar.huawei.com/pvmswebsite/nologin/assets/build/cloud.html#/kiosk?kk=TOKEN
     Saída:   https://intl.fusionsolar.huawei.com/rest/pvms/web/kiosk/v1/station-kiosk-file?kk=TOKEN
     """
-    token = _extract_kiosk_token(kiosk_url)
-    if not token:
-        return None
+    token = None
+    if getattr(settings, "fusionsolar_token", None):
+        token = str(settings.fusionsolar_token).strip().strip('"').strip("'")
+    if not token or len(token) < 15:
+        token = _extract_kiosk_token(kiosk_url)
 
-    try:
-        parsed = urllib.parse.urlparse(kiosk_url)
-        scheme = parsed.scheme or "https"
-        netloc = parsed.netloc or "intl.fusionsolar.huawei.com"
-        return f"{scheme}://{netloc}/rest/pvms/web/kiosk/v1/station-kiosk-file?kk={token}"
-    except Exception as e:
-        logger.debug(f"[FusionSolar] Erro ao parsear URL do quiosque: {e}")
-        return None
+    host = DEFAULT_HUAWEI_HOST
+    if kiosk_url:
+        try:
+            parsed = urllib.parse.urlparse(kiosk_url)
+            if parsed.netloc:
+                host = parsed.netloc
+        except Exception:
+            pass
+
+    return f"https://{host}/rest/pvms/web/kiosk/v1/station-kiosk-file?kk={token}"
 
 
 class FusionSolarClient:
@@ -71,25 +95,46 @@ class FusionSolarClient:
         self._cache: Dict[str, Any] = {}
         self._last_fetch_ts: float = 0.0
         self._lock = asyncio.Lock()
+        self._ssl_ctx = self._create_ssl_context()
+
+    def _create_ssl_context(self) -> ssl.SSLContext:
+        """Cria contexto SSL resiliente para garantir conectividade em qualquer distro Linux."""
+        try:
+            ctx = ssl.create_default_context()
+            return ctx
+        except Exception:
+            ctx = ssl._create_unverified_context()
+            return ctx
 
     def _sync_http_fetch(self, url: str) -> Optional[Dict[str, Any]]:
         """Executa requisição HTTP síncrona com timeout estrito em threadpool."""
+        logger.info(f"[FusionSolar] Consultando telemetria na Huawei: {url}")
         try:
             req = urllib.request.Request(
                 url,
                 headers={
                     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko)",
                     "Accept": "application/json, text/plain, */*",
-                    "Referer": settings.fusionsolar_kiosk_url
+                    "Referer": "https://intl.fusionsolar.huawei.com/pvmswebsite/nologin/assets/build/cloud.html"
                 }
             )
-            with urllib.request.urlopen(req, timeout=4.0) as response:
+            # Timeout de 6.0s para cobrir primeira conexão com servidor internacional
+            with urllib.request.urlopen(req, timeout=6.0, context=self._ssl_ctx) as response:
                 if response.status == 200:
                     body = response.read().decode("utf-8")
                     return json.loads(body)
         except Exception as e:
-            logger.debug(f"[FusionSolar] Falha na consulta REST à Huawei: {e}")
-            return None
+            logger.warning(f"[FusionSolar] Falha na consulta REST à Huawei: {e}")
+            # Tentativa com contexto não verificado se for erro de SSL
+            try:
+                ctx_unverified = ssl._create_unverified_context()
+                with urllib.request.urlopen(req, timeout=6.0, context=ctx_unverified) as response:
+                    if response.status == 200:
+                        body = response.read().decode("utf-8")
+                        return json.loads(body)
+            except Exception as e2:
+                logger.warning(f"[FusionSolar] Tentativa secundária também falhou: {e2}")
+                return None
         return None
 
     def _get_fallback_file_data(self) -> Optional[Dict[str, Any]]:
@@ -118,9 +163,10 @@ class FusionSolarClient:
         try:
             raw_data = raw_resp.get("data")
             if not raw_data:
+                logger.warning(f"[FusionSolar] Resposta da Huawei não possui campo 'data': {raw_resp}")
                 return None
 
-            # O payload interno 'data' pode vir como string JSON codificada
+            # O payload interno 'data' vem como string JSON codificada
             if isinstance(raw_data, str):
                 station_data = json.loads(raw_data)
             elif isinstance(raw_data, dict):
@@ -162,6 +208,8 @@ class FusionSolarClient:
                 if p and p != "-":
                     curva.append({"hora": h, "potencia": f"{p} kW"})
 
+            logger.info(f"[FusionSolar] Telemetria obtida com sucesso: {pot_display} instantâneo | {daily_display} hoje ({addr})")
+
             return {
                 "available": True,
                 "station_name": station_name,
@@ -192,9 +240,6 @@ class FusionSolarClient:
             return {"available": False, "reason": "disabled"}
 
         kiosk_url = settings.fusionsolar_kiosk_url
-        if not kiosk_url:
-            return {"available": False, "reason": "missing_kiosk_url"}
-
         now = time.time()
         ttl = max(30, settings.fusionsolar_cache_seconds)
 
@@ -208,14 +253,13 @@ class FusionSolarClient:
 
             # 2. Constrói a URL REST direta da Huawei
             rest_url = _build_huawei_rest_url(kiosk_url)
-            if rest_url:
-                raw_json = await asyncio.to_thread(self._sync_http_fetch, rest_url)
-                if raw_json and raw_json.get("success"):
-                    parsed = self._parse_huawei_payload(raw_json)
-                    if parsed:
-                        self._cache = parsed
-                        self._last_fetch_ts = now
-                        return parsed
+            raw_json = await asyncio.to_thread(self._sync_http_fetch, rest_url)
+            if raw_json and raw_json.get("success"):
+                parsed = self._parse_huawei_payload(raw_json)
+                if parsed:
+                    self._cache = parsed
+                    self._last_fetch_ts = now
+                    return parsed
 
             # 3. Fallback: Arquivo local se existir
             fallback_data = await asyncio.to_thread(self._get_fallback_file_data)
@@ -243,6 +287,7 @@ class FusionSolarClient:
                 }
                 self._cache = parsed
                 self._last_fetch_ts = now
+                logger.info(f"[FusionSolar] Usando snapshot local de dados_solar.json: {parsed['potencia_realtime']}")
                 return parsed
 
             # 4. Fallback: Cache anterior expirado
@@ -251,6 +296,7 @@ class FusionSolarClient:
                 stale["is_stale"] = True
                 return stale
 
+            logger.warning("[FusionSolar] Telemetria da Huawei indisponível no momento.")
             return {
                 "available": False,
                 "reason": "huawei_unreachable",

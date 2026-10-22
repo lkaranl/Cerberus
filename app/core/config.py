@@ -101,6 +101,7 @@ class Settings(BaseSettings):
 
     # Módulo de Integração com Usina Solar (Huawei FusionSolar Kiosk)
     fusionsolar_enabled: bool = Field(default=True, alias="FUSIONSOLAR_ENABLED")
+    fusionsolar_token: str = Field(default="EM6wrnyAhBtOFvD7rdNu045xGpwb1bGD", alias="FUSIONSOLAR_TOKEN")
     fusionsolar_kiosk_url: str = Field(
         default="https://intl.fusionsolar.huawei.com/pvmswebsite/nologin/assets/build/cloud.html#/kiosk?kk=EM6wrnyAhBtOFvD7rdNu045xGpwb1bGD",
         alias="FUSIONSOLAR_KIOSK_URL"
