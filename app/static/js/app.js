@@ -716,21 +716,40 @@ document.addEventListener("DOMContentLoaded", () => {
       ? evt.timestamp
       : timeObj.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
+    let timeAgo = "";
+    if (!isNaN(timeObj.getTime())) {
+      const diffSec = Math.max(0, Math.floor((Date.now() - timeObj.getTime()) / 1000));
+      if (diffSec < 60) {
+        timeAgo = "agora";
+      } else if (diffSec < 3600) {
+        timeAgo = `há ${Math.floor(diffSec / 60)}m`;
+      } else if (diffSec < 86400) {
+        timeAgo = `há ${Math.floor(diffSec / 3600)}h`;
+      }
+    }
+
     const cropUrl = `/api/events/${eventId}/crop`;
     const { badgeClass, badgeText, primaryTitle } = parseRadarEvent(evt);
+    const camName = evt.camera_name || evt.camera_id;
 
     item.innerHTML = `
-      <img class="radar-item-thumb" src="${cropUrl}" alt="Evidência" loading="lazy" onerror="this.src='/static/img/placeholder.png'">
+      <div class="radar-thumb-wrap">
+        <img class="radar-item-thumb" src="${cropUrl}" alt="Evidência" loading="lazy" onerror="this.src='/static/img/placeholder.png'">
+      </div>
       <div class="radar-item-details">
         <div class="radar-item-topline">
           <span class="radar-item-badge ${badgeClass}">${badgeText}</span>
           ${primaryTitle ? `<span class="radar-item-name">${primaryTitle}</span>` : ""}
         </div>
-        <span class="radar-item-meta">
-          <span>${evt.camera_name || evt.camera_id}</span>
-          <span>•</span>
-          <span>${timeFormatted}</span>
-        </span>
+        <div class="radar-item-cam-row">
+          <span class="radar-cam-dot"></span>
+          <span class="radar-item-camera-label">${camName}</span>
+        </div>
+      </div>
+      <div class="radar-item-aside">
+        <span class="radar-item-time mono">${timeFormatted}</span>
+        ${timeAgo ? `<span class="radar-item-ago">${timeAgo}</span>` : ""}
+        <span class="radar-item-inspect-btn">VER ↗</span>
       </div>
     `;
 
