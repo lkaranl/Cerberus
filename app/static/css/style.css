@@ -720,13 +720,14 @@ body.clean-cctv-body {
   opacity: 0.8;
 }
 
-/* Lista Vertical de Eventos com Espaçamento Otimizado */
+/* Feed em Grid 2x2 de Alta Visibilidade */
 .radar-events-feed {
   flex: 1;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: minmax(134px, 145px);
   gap: 8px;
+  overflow-y: auto;
   padding-right: 4px;
 }
 
@@ -739,6 +740,8 @@ body.clean-cctv-body {
 }
 
 .radar-empty {
+  grid-column: 1 / -1;
+  grid-row: 1 / -1;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -748,42 +751,44 @@ body.clean-cctv-body {
   text-align: center;
 }
 
-/* Item do Radar com Layout Completo: Thumb 104px, Detalhes e Bloco Lateral */
+/* Item do Radar em Card 2x2 com HUD de Evidência */
 .radar-item {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 5px 12px 5px 5px;
+  flex-direction: column;
   background: rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
+  padding: 6px;
+  gap: 6px;
   cursor: pointer;
+  position: relative;
+  overflow: hidden;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
 }
 
 .radar-item:hover {
   background: rgba(255, 255, 255, 0.08);
   border-color: rgba(255, 255, 255, 0.22);
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.6);
 }
 
-/* Moldura da Evidência Ampliada (104px x 68px - Aspecto Panorâmico de Alta Visibilidade) */
+/* Moldura Superior da Evidência (Panorâmica Completa) */
 .radar-thumb-wrap {
-  width: 104px;
-  height: 68px;
-  flex-shrink: 0;
-  border-radius: 10px;
+  position: relative;
+  width: 100%;
+  flex: 1;
+  min-height: 88px;
+  border-radius: 8px;
   overflow: hidden;
   background: #000;
-  border: 1.5px solid rgba(255, 255, 255, 0.18);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.55);
-  transition: border-color 0.2s, transform 0.2s;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  transition: border-color 0.2s;
 }
 
 .radar-item:hover .radar-thumb-wrap {
   border-color: var(--accent-emerald);
-  transform: scale(1.02);
 }
 
 .radar-item-thumb {
@@ -791,41 +796,58 @@ body.clean-cctv-body {
   height: 100%;
   object-fit: cover;
   display: block;
+  transition: transform 0.25s ease;
 }
 
-/* Bloco Central de Detalhes */
-.radar-item-details {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 5px;
-  min-width: 0;
+.radar-item:hover .radar-item-thumb {
+  transform: scale(1.04);
 }
 
-.radar-item-topline {
+/* HUD Overlay sobre a Imagem de Evidência */
+.radar-thumb-overlay {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  right: 5px;
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  pointer-events: none;
+  z-index: 2;
 }
 
-.radar-item-name {
-  font-size: 0.94rem;
+.radar-thumb-time {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
   font-weight: 700;
   color: #fff;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  letter-spacing: 0.3px;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  letter-spacing: 0.5px;
+}
+
+/* Rodapé do Card */
+.radar-item-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px 2px;
+  gap: 6px;
+  min-height: 20px;
 }
 
 .radar-item-cam-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 0.76rem;
+  gap: 5px;
+  font-size: 0.72rem;
   color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .radar-cam-dot {
@@ -834,25 +856,28 @@ body.clean-cctv-body {
   border-radius: 50%;
   background: var(--accent-emerald);
   box-shadow: 0 0 6px var(--accent-emerald);
+  flex-shrink: 0;
 }
 
-/* Bloco Lateral Direito: Horário, Tempo Relativo e Botão de Inspeção */
-.radar-item-aside {
+.radar-item-camera-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.radar-item-extra {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  justify-content: center;
+  align-items: center;
   gap: 4px;
   flex-shrink: 0;
-  margin-left: 8px;
 }
 
-.radar-item-time {
-  font-family: var(--font-mono);
-  font-size: 0.82rem;
+.radar-item-name {
+  font-size: 0.76rem;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.95);
-  letter-spacing: 0.5px;
+  color: #fff;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
 }
 
 .radar-item-ago {
@@ -864,13 +889,13 @@ body.clean-cctv-body {
 
 .radar-item-inspect-btn {
   font-family: var(--font-mono);
-  font-size: 0.62rem;
+  font-size: 0.60rem;
   font-weight: 700;
   color: var(--accent-cyan);
   background: rgba(0, 210, 255, 0.10);
   border: 1px solid rgba(0, 210, 255, 0.30);
-  padding: 1px 7px;
-  border-radius: 4px;
+  padding: 1px 6px;
+  border-radius: 3px;
   letter-spacing: 0.5px;
   transition: all 0.2s;
 }
@@ -1059,18 +1084,13 @@ body.clean-cctv-body {
     padding: 10px 12px;
   }
 
-  .radar-item-thumb {
-    width: 70px;
-    height: 58px;
+  .radar-events-feed {
+    grid-auto-rows: minmax(120px, 132px);
+    gap: 6px;
   }
 
-  .radar-item {
-    padding: 6px 10px;
-    gap: 10px;
-  }
-
-  .radar-item-name {
-    font-size: 0.88rem;
+  .radar-thumb-wrap {
+    min-height: 74px;
   }
 }
 

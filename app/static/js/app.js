@@ -735,21 +735,19 @@ document.addEventListener("DOMContentLoaded", () => {
     item.innerHTML = `
       <div class="radar-thumb-wrap">
         <img class="radar-item-thumb" src="${cropUrl}" alt="Evidência" loading="lazy" onerror="this.src='/static/img/placeholder.png'">
-      </div>
-      <div class="radar-item-details">
-        <div class="radar-item-topline">
+        <div class="radar-thumb-overlay">
           <span class="radar-item-badge ${badgeClass}">${badgeText}</span>
-          ${primaryTitle ? `<span class="radar-item-name">${primaryTitle}</span>` : ""}
+          <span class="radar-thumb-time mono">${timeFormatted}</span>
         </div>
+      </div>
+      <div class="radar-item-info">
         <div class="radar-item-cam-row">
           <span class="radar-cam-dot"></span>
           <span class="radar-item-camera-label">${camName}</span>
         </div>
-      </div>
-      <div class="radar-item-aside">
-        <span class="radar-item-time mono">${timeFormatted}</span>
-        ${timeAgo ? `<span class="radar-item-ago">${timeAgo}</span>` : ""}
-        <span class="radar-item-inspect-btn">VER ↗</span>
+        <div class="radar-item-extra">
+          ${primaryTitle ? `<span class="radar-item-name">${primaryTitle}</span>` : (timeAgo ? `<span class="radar-item-ago">${timeAgo}</span>` : `<span class="radar-item-inspect-btn">VER ↗</span>`)}
+        </div>
       </div>
     `;
 
@@ -774,12 +772,15 @@ document.addEventListener("DOMContentLoaded", () => {
     if (img) img.src = `/api/events/${eventId}/crop?t=${Date.now()}`;
 
     const { badgeClass, badgeText, primaryTitle } = parseRadarEvent(evt);
-    const toplineEl = item.querySelector(".radar-item-topline");
-    if (toplineEl) {
-      toplineEl.innerHTML = `
-        <span class="radar-item-badge ${badgeClass}">${badgeText}</span>
-        ${primaryTitle ? `<span class="radar-item-name">${primaryTitle}</span>` : ""}
-      `;
+    const badgeEl = item.querySelector(".radar-item-badge");
+    if (badgeEl) {
+      badgeEl.className = `radar-item-badge ${badgeClass}`;
+      badgeEl.textContent = badgeText;
+    }
+
+    const extraEl = item.querySelector(".radar-item-extra");
+    if (extraEl && primaryTitle) {
+      extraEl.innerHTML = `<span class="radar-item-name">${primaryTitle}</span>`;
     }
 
     if (state.activeModalEventId === eventId) {
