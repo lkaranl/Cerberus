@@ -164,6 +164,12 @@ class FaceRecognizer:
                     logger.warning(f"Não foi possível decodificar foto: {img_path.name}")
                     continue
 
+                # Redimensiona fotos gigantes de celular para ~1280px para otimizar o detector SCRFD
+                max_dim = max(raw_bgr.shape[:2])
+                if max_dim > 1600:
+                    scale = 1280.0 / max_dim
+                    raw_bgr = cv2.resize(raw_bgr, (int(raw_bgr.shape[1] * scale), int(raw_bgr.shape[0] * scale)), interpolation=cv2.INTER_AREA)
+
                 emb = self._extract_probe_embedding(raw_bgr)
                 if emb is not None:
                     embeddings_list.append(emb)
@@ -227,23 +233,25 @@ class FaceRecognizer:
     def _check_face_quality(self, face_crop: np.ndarray, fw: int, fh: int) -> Tuple[bool, str]:
         """
         Face Quality Assessment (FQA):
-        Rejeita alucinações biométricas baseadas em rostos minúsculos ou borrados.
+        Rejeita alucinações biométricas baseadas em ruídos extremos.
         """
-        # 1. Filtro de Resolução Real (>= 48x48 pixels)
-        if fw < settings.face_min_size or fh < settings.face_min_size:
-            return False, f"Resolução insuficiente ({fw}x{fh} < {settings.face_min_size}px)"
+        # 1. Filtro de Resolução Real (>= settings.face_min_size pixels)
+        min_sz = getattr(settings, "face_min_size", 20)
+        if fw < min_sz or fh < min_sz:
+            return False, f"Resolução insuficiente ({fw}x{fh} < {min_sz}px)"
 
-        # 2. Proporção Anatômica Humana
+        # 2. Proporção Anatômica Humana (flexível para ângulos inclinados e poses de CFTV)
         aspect = fw / float(fh)
-        if aspect < 0.55 or aspect > 1.55:
+        if aspect < 0.40 or aspect > 2.20:
             return False, f"Proporção anatômica inválida ({aspect:.2f})"
 
-        # 3. Motion Blur Gate (Filtro de Nitidez Laplaciana)
+        # 3. Motion Blur Gate (Filtro de Nitidez Laplaciana suave)
         try:
             gray = cv2.cvtColor(face_crop, cv2.COLOR_BGR2GRAY)
             lap_var = float(cv2.Laplacian(gray, cv2.CV_64F).var())
-            if lap_var < settings.face_quality_min_blur:
-                return False, f"Borrão de movimento (nitidez={lap_var:.1f} < {settings.face_quality_min_blur})"
+            min_blur = getattr(settings, "face_quality_min_blur", 6.0)
+            if lap_var < min_blur:
+                return False, f"Borrão de movimento (nitidez={lap_var:.1f} < {min_blur})"
         except Exception:
             return False, "Erro ao calcular nitidez"
 
@@ -291,6 +299,20 @@ class FaceRecognizer:
                         if faces and len(faces) > 0:
                             break
 
+                # Se ainda não detectou (ex: foto já recortada somente da face pelo usuário),
+                # extrai embedding direto via recognition model (ArcFace) em 112x112
+                if not faces or len(faces) == 0:
+                    rec_model = self.insight_app.models.get('recognition') if self.insight_app else None
+                    if rec_model is not None:
+                        try:
+                            aligned_112 = cv2.resize(img_bgr, (112, 112), interpolation=cv2.INTER_LANCZOS4)
+                            emb = rec_model.get_feat(aligned_112).flatten().astype(np.float32)
+                            norm = np.linalg.norm(emb)
+                            if norm > 0:
+                                return emb / norm
+                        except Exception:
+                            pass
+
                 if faces and len(faces) > 0:
                     best_face = max(faces, key=lambda f: getattr(f, "det_score", 0.0))
                     if getattr(best_face, "embedding", None) is not None:
@@ -334,16 +356,16 @@ class FaceRecognizer:
         box_h = y2 - y1
         box_w = x2 - x1
 
-        # Região da cabeça/busto (65% superiores da pessoa)
-        head_y2 = min(y2, y1 + int(box_h * 0.65))
-        pad_x = int(box_w * 0.15)
+        # Região da cabeça/busto (70% superiores da pessoa)
+        head_y2 = min(y2, y1 + int(box_h * 0.70))
+        pad_x = int(box_w * 0.20)
         crop_x1 = max(0, x1 - pad_x)
         crop_x2 = min(w, x2 + pad_x)
-        crop_y1 = max(0, y1 - 10)
-        crop_y2 = min(h, head_y2 + 10)
+        crop_y1 = max(0, y1 - 15)
+        crop_y2 = min(h, head_y2 + 15)
 
         head_crop = frame_bgr[crop_y1:crop_y2, crop_x1:crop_x2]
-        if head_crop.size == 0 or head_crop.shape[0] < settings.face_min_size or head_crop.shape[1] < settings.face_min_size:
+        if head_crop.size == 0 or head_crop.shape[0] < 16 or head_crop.shape[1] < 16:
             return "Desconhecido", 0.0, False, None
 
         # =========================================================================
@@ -388,7 +410,7 @@ class FaceRecognizer:
                 face_bbox_global = None
 
                 for face in faces:
-                    if face.det_score < 0.55:
+                    if getattr(face, "det_score", 0.0) < 0.30:
                         continue
                     bx1, by1, bx2, by2 = face.bbox
                     fx1 = max(0, int(crop_x1 + bx1))

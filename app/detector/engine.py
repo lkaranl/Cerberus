@@ -148,31 +148,25 @@ class YOLODetectorEngine:
             box_area = box_w * box_h
 
             # 1. Filtros de Confiança Mínima Diferenciada por Classe:
-            # Pessoas exigem maior certeza (>= 0.50) para evitar alucinação com animais ou reflexos
-            if entity_type == "person" and conf_val < 0.50:
+            if entity_type == "person" and conf_val < 0.38:
                 continue
-            elif entity_type == "vehicle" and conf_val < 0.42:
+            elif entity_type == "vehicle" and conf_val < 0.38:
                 continue
             elif entity_type == "pet" and conf_val < 0.35:
                 continue
 
-            # 2. Filtro Biomecânico Anatômico Humano (Aspect Ratio):
+            # 2. Filtros Físicos Anti-Ruído (Elimina poeira, insetos na lente e falsos positivos minúsculos):
             if entity_type == "person":
-                # Em câmeras 2K (2304x1296), um ser humano adulto em pé tem altura considerável.
-                # Gatos, cães pequenos e animais no chão raramente passam de 85px de altura
-                if box_h < 95 or box_area < 2200:
+                # Ser humano em câmeras de segurança: aceita mesmo a média/longa distância (>= 35px altura)
+                if box_h < 35 or box_area < 450:
                     continue
-
-                # Postura Humana: Altura SEMPRE maior que largura (aspecto estritamente vertical).
-                # Animais quadrúpedes andando têm o corpo horizontal (largura > altura).
-                # Se largura for maior ou quase igual à altura, é um animal ou falso positivo no chão!
-                if box_w >= (box_h * 0.95):
-                    # Se for largo e baixo, NUNCA é uma pessoa em pé; reclassifica para Pet ou descarta
-                    if box_w >= 50 and box_h >= 35:
-                        entity_type = "pet"
-                        class_label = "Animal"
-                    else:
-                        continue
+            elif entity_type == "pet":
+                # Animais quadrúpedes: aceita pets no chão a partir de 30px
+                if box_h < 28 or box_area < 350:
+                    continue
+            elif entity_type == "vehicle":
+                if box_area < 800:
+                    continue
 
             tracking_id = None
             if box.id is not None:

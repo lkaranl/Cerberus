@@ -48,18 +48,18 @@ class Settings(BaseSettings):
 
     # Parâmetros SOTA de Reconhecimento Facial (InsightFace ArcFace / SCRFD)
     face_model_name: str = Field(default="buffalo_l", alias="FACE_MODEL_NAME")
-    face_confidence_threshold: float = Field(default=0.58, alias="FACE_CONFIDENCE_THRESHOLD")
-    face_instant_threshold: float = Field(default=0.68, alias="FACE_INSTANT_THRESHOLD")
-    face_min_size: int = Field(default=48, alias="FACE_MIN_SIZE")
-    face_quality_min_blur: float = Field(default=18.0, alias="FACE_QUALITY_MIN_BLUR")
-    face_temporal_votes: int = Field(default=3, alias="FACE_TEMPORAL_VOTES")
+    face_confidence_threshold: float = Field(default=0.42, alias="FACE_CONFIDENCE_THRESHOLD")
+    face_instant_threshold: float = Field(default=0.52, alias="FACE_INSTANT_THRESHOLD")
+    face_min_size: int = Field(default=20, alias="FACE_MIN_SIZE")
+    face_quality_min_blur: float = Field(default=6.0, alias="FACE_QUALITY_MIN_BLUR")
+    face_temporal_votes: int = Field(default=2, alias="FACE_TEMPORAL_VOTES")
 
     # Módulo de Restauração e Super-Resolução Facial SOTA
     face_shadow_lifting_enabled: bool = Field(default=True, alias="FACE_SHADOW_LIFTING_ENABLED")
     face_shadow_clip_limit: float = Field(default=3.0, alias="FACE_SHADOW_CLIP_LIMIT")
     face_shadow_gamma: float = Field(default=0.60, alias="FACE_SHADOW_GAMMA")
     face_super_res_enabled: bool = Field(default=True, alias="FACE_SUPER_RES_ENABLED")
-    face_super_res_threshold: int = Field(default=60, alias="FACE_SUPER_RES_THRESHOLD")
+    face_super_res_threshold: int = Field(default=75, alias="FACE_SUPER_RES_THRESHOLD")
 
     # Aceleração Máxima TensorRT (NVIDIA CUDA)
     use_tensorrt: bool = Field(default=True, alias="USE_TENSORRT")

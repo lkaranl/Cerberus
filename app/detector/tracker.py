@@ -153,7 +153,8 @@ class TrackedEntity:
                 return False, name, score
         else:
             self.consecutive_unknown_count += 1
-            if score >= 0.48:
+            uncertain_floor = max(0.35, settings.face_confidence_threshold - 0.05)
+            if score >= uncertain_floor:
                 self.uncertainty_grace_frames += 1
             else:
                 self.uncertainty_grace_frames = 0
