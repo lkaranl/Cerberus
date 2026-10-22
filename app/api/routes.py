@@ -192,6 +192,13 @@ async def get_solar_kiosk():
     return await fusionsolar_client.get_kiosk_data()
 
 
+@router.get("/solar/debug")
+async def get_solar_debug():
+    """Endpoint de diagnóstico detalhado para verificar a comunicação com a Huawei."""
+    debug_info = await fusionsolar_client.get_debug_info()
+    return debug_info
+
+
 @router.get("/cameras")
 async def get_cameras():
     """Retorna lista de câmeras com status de conexão e FPS."""

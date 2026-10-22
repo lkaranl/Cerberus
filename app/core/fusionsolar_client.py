@@ -6,10 +6,8 @@ sem depender de nenhum microserviço intermediário ou instância de navegador h
 """
 
 import re
-import ssl
 import json
 import time
-import urllib.request
 import urllib.parse
 import asyncio
 import logging
@@ -94,47 +92,66 @@ class FusionSolarClient:
     def __init__(self):
         self._cache: Dict[str, Any] = {}
         self._last_fetch_ts: float = 0.0
+        self._last_error: str = "Nenhum erro registrado"
         self._lock = asyncio.Lock()
-        self._ssl_ctx = self._create_ssl_context()
-
-    def _create_ssl_context(self) -> ssl.SSLContext:
-        """Cria contexto SSL resiliente para garantir conectividade em qualquer distro Linux."""
-        try:
-            ctx = ssl.create_default_context()
-            return ctx
-        except Exception:
-            ctx = ssl._create_unverified_context()
-            return ctx
 
     def _sync_http_fetch(self, url: str) -> Optional[Dict[str, Any]]:
-        """Executa requisição HTTP síncrona com timeout estrito em threadpool."""
+        """
+        Executa requisição HTTP usando 'requests' prioritariamente (com verify=False para
+        evitar bloqueios por crypto-policies restritas do Linux Nobara/Fedora) e fallback para 'urllib'.
+        """
         logger.info(f"[FusionSolar] Consultando telemetria na Huawei: {url}")
+
+        # 1. Tentativa primária com a biblioteca 'requests'
         try:
+            import requests
+            import urllib3
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+            resp = requests.get(
+                url,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                    "Accept": "application/json, text/plain, */*",
+                    "Referer": "https://intl.fusionsolar.huawei.com/pvmswebsite/nologin/assets/build/cloud.html"
+                },
+                timeout=8.0,
+                verify=False
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                self._last_error = ""
+                return data
+            else:
+                self._last_error = f"HTTP {resp.status_code}: {resp.text[:200]}"
+                logger.warning(f"[FusionSolar] Huawei retornou status não-200: {resp.status_code}")
+        except Exception as e:
+            self._last_error = f"Erro em requests: {e}"
+            logger.warning(f"[FusionSolar] Falha na consulta via requests: {e}")
+
+        # 2. Fallback secundário com urllib
+        try:
+            import urllib.request
+            import ssl
+
+            ctx = ssl._create_unverified_context()
             req = urllib.request.Request(
                 url,
                 headers={
-                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko)",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
                     "Accept": "application/json, text/plain, */*",
                     "Referer": "https://intl.fusionsolar.huawei.com/pvmswebsite/nologin/assets/build/cloud.html"
                 }
             )
-            # Timeout de 6.0s para cobrir primeira conexão com servidor internacional
-            with urllib.request.urlopen(req, timeout=6.0, context=self._ssl_ctx) as response:
+            with urllib.request.urlopen(req, timeout=8.0, context=ctx) as response:
                 if response.status == 200:
                     body = response.read().decode("utf-8")
+                    self._last_error = ""
                     return json.loads(body)
         except Exception as e:
-            logger.warning(f"[FusionSolar] Falha na consulta REST à Huawei: {e}")
-            # Tentativa com contexto não verificado se for erro de SSL
-            try:
-                ctx_unverified = ssl._create_unverified_context()
-                with urllib.request.urlopen(req, timeout=6.0, context=ctx_unverified) as response:
-                    if response.status == 200:
-                        body = response.read().decode("utf-8")
-                        return json.loads(body)
-            except Exception as e2:
-                logger.warning(f"[FusionSolar] Tentativa secundária também falhou: {e2}")
-                return None
+            self._last_error = f"Erro em urllib: {e}"
+            logger.warning(f"[FusionSolar] Falha secundária na consulta via urllib: {e}")
+
         return None
 
     def _get_fallback_file_data(self) -> Optional[Dict[str, Any]]:
@@ -296,13 +313,28 @@ class FusionSolarClient:
                 stale["is_stale"] = True
                 return stale
 
-            logger.warning("[FusionSolar] Telemetria da Huawei indisponível no momento.")
+            logger.warning(f"[FusionSolar] Telemetria da Huawei indisponível no momento. Detalhe: {self._last_error}")
             return {
                 "available": False,
                 "reason": "huawei_unreachable",
+                "last_error": self._last_error,
                 "potencia_realtime": "0.00 kW",
                 "rendimento_hoje": "0.0 kWh"
             }
+
+    async def get_debug_info(self) -> Dict[str, Any]:
+        """Retorna informações diagnósticas detalhadas para inspeção via navegador."""
+        rest_url = _build_huawei_rest_url(settings.fusionsolar_kiosk_url)
+        return {
+            "fusionsolar_enabled": settings.fusionsolar_enabled,
+            "fusionsolar_token": getattr(settings, "fusionsolar_token", None),
+            "fusionsolar_kiosk_url": settings.fusionsolar_kiosk_url,
+            "target_rest_url": rest_url,
+            "last_error": self._last_error,
+            "cache_age_seconds": round(time.time() - self._last_fetch_ts, 1) if self._last_fetch_ts else None,
+            "has_cache": bool(self._cache),
+            "current_data": self._cache
+        }
 
 
 fusionsolar_client = FusionSolarClient()
