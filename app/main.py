@@ -58,6 +58,12 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Falha ao iniciar bots do Telegram: {e}")
 
+    # Pré-carrega a telemetria da usina solar em segundo plano para aquecer o cache
+    if settings.fusionsolar_enabled:
+        import asyncio
+        from app.core.fusionsolar_client import fusionsolar_client
+        asyncio.create_task(fusionsolar_client.get_kiosk_data())
+
     logger.info(f"Sentinela Vision pronto e operando na porta {settings.port}")
 
     yield

@@ -323,7 +323,8 @@ class FusionSolarClient:
             }
 
     async def get_debug_info(self) -> Dict[str, Any]:
-        """Retorna informações diagnósticas detalhadas para inspeção via navegador."""
+        """Retorna informações diagnósticas detalhadas forçando a busca na Huawei."""
+        fetch_result = await self.get_kiosk_data(force=True)
         rest_url = _build_huawei_rest_url(settings.fusionsolar_kiosk_url)
         return {
             "fusionsolar_enabled": settings.fusionsolar_enabled,
@@ -333,6 +334,7 @@ class FusionSolarClient:
             "last_error": self._last_error,
             "cache_age_seconds": round(time.time() - self._last_fetch_ts, 1) if self._last_fetch_ts else None,
             "has_cache": bool(self._cache),
+            "fetch_result": fetch_result,
             "current_data": self._cache
         }
 
