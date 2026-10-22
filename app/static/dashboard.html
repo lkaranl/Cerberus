@@ -904,8 +904,163 @@
       transition: opacity 0.3s ease;
     }
 
-    .modal-img.loaded {
-      opacity: 1;
+    /* Estúdio de Treinamento Biométrico & Classificação */
+    .training-panel {
+      border: 1px solid rgba(0, 230, 118, 0.28);
+      background: linear-gradient(180deg, rgba(13, 24, 28, 0.85) 0%, rgba(9, 14, 22, 0.95) 100%);
+      box-shadow: 0 4px 24px rgba(0, 230, 118, 0.08);
+    }
+
+    .training-cards-track {
+      display: flex;
+      gap: 14px;
+      overflow-x: auto;
+      padding: 4px 2px 12px 2px;
+      scroll-snap-type: x mandatory;
+    }
+
+    .training-card {
+      min-width: 220px;
+      max-width: 240px;
+      background: var(--bg-card-inner);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      align-items: center;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      scroll-snap-align: start;
+      position: relative;
+    }
+
+    .training-card:hover {
+      border-color: var(--accent-emerald);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0, 230, 118, 0.2);
+    }
+
+    .training-crop-img {
+      width: 72px;
+      height: 72px;
+      border-radius: 8px;
+      object-fit: cover;
+      background: #000;
+      border: 1px solid var(--border-subtle);
+      cursor: pointer;
+      transition: transform 0.2s ease;
+    }
+
+    .training-crop-img:hover {
+      transform: scale(1.08);
+      border-color: var(--accent-cyan);
+    }
+
+    .training-meta {
+      text-align: center;
+      font-size: 0.73rem;
+      color: var(--text-dim);
+      line-height: 1.3;
+    }
+
+    .training-meta strong {
+      color: var(--text-main);
+      display: block;
+      font-size: 0.77rem;
+    }
+
+    .training-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      justify-content: center;
+      width: 100%;
+    }
+
+    .btn-enroll-chip {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-main);
+      padding: 4px 9px;
+      border-radius: var(--radius-full);
+      font-size: 0.72rem;
+      font-family: var(--font-main);
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+
+    .btn-enroll-chip:hover {
+      background: rgba(0, 230, 118, 0.2);
+      border-color: var(--accent-emerald);
+      color: var(--accent-emerald);
+      transform: translateY(-1px);
+    }
+
+    .btn-enroll-chip.custom {
+      color: var(--accent-cyan);
+      border-color: rgba(0, 240, 255, 0.3);
+    }
+
+    .btn-enroll-chip.custom:hover {
+      background: rgba(0, 240, 255, 0.2);
+      border-color: var(--accent-cyan);
+    }
+
+    .btn-table-classify {
+      background: rgba(0, 230, 118, 0.08);
+      border: 1px solid rgba(0, 230, 118, 0.3);
+      color: var(--accent-emerald);
+      padding: 3px 8px;
+      border-radius: var(--radius-sm);
+      font-size: 0.73rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: var(--font-main);
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.15s ease;
+    }
+
+    .btn-table-classify:hover {
+      background: var(--accent-emerald);
+      color: #000;
+      box-shadow: 0 0 12px rgba(0, 230, 118, 0.4);
+    }
+
+    /* Modal de Classificação */
+    .modal-classify-box {
+      width: 460px;
+      max-width: 92vw;
+      background: #0d121c;
+      border: 1px solid var(--border-accent);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.7);
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .classify-crop-preview {
+      width: 90px;
+      height: 90px;
+      border-radius: 12px;
+      object-fit: cover;
+      margin: 0 auto;
+      border: 2px solid var(--accent-cyan);
+      box-shadow: 0 0 18px rgba(0, 240, 255, 0.3);
+      display: block;
+    }
+
+    .classify-options {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
     }
 
     /* Responsividade */
@@ -1190,6 +1345,37 @@
       </div>
     </section>
 
+    <!-- Estúdio de Treinamento Biométrico & Classificação de Rostos -->
+    <section class="panel-card training-panel" id="face-trainer-section">
+      <div class="panel-header">
+        <div class="panel-title-wrap">
+          <h3 class="panel-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-emerald)" stroke-width="2">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+            Classificação Biométrica & Treinamento de Rostos (Auto-Enrollment)
+          </h3>
+        </div>
+        <div id="training-stats-badge">
+          <span class="brand-tag" style="background: rgba(0, 230, 118, 0.12); color: var(--accent-emerald); border-color: rgba(0, 230, 118, 0.3);">
+            ⚡ Atribua rostos das câmeras para ensinar a IA com os ângulos reais
+          </span>
+        </div>
+      </div>
+
+      <p class="panel-subtitle">
+        Rostos recentes detectados sem identificação definitiva. Clique no morador correspondente para salvar o snapshot real da câmera na biometria:
+      </p>
+
+      <!-- Carrossel de Rostos Candidatos Recentes -->
+      <div class="training-cards-track" id="training-candidates-list">
+        <div style="color: var(--text-dim); font-size: 0.8rem; padding: 18px;">Buscando rostos desconhecidos para classificação...</div>
+      </div>
+    </section>
+
     <!-- Auditoria Forense e Feed de Detecções -->
     <section class="audit-section">
       <div class="audit-controls">
@@ -1235,11 +1421,12 @@
               <th>Câmera</th>
               <th>Horário</th>
               <th>Confiança</th>
+              <th style="text-align: right;">Ação</th>
             </tr>
           </thead>
           <tbody id="audit-table-body">
             <tr>
-              <td colspan="7" style="text-align: center; color: var(--text-dim); padding: 40px;">
+              <td colspan="8" style="text-align: center; color: var(--text-dim); padding: 40px;">
                 Carregando eventos do banco de dados...
               </td>
             </tr>
@@ -1294,6 +1481,35 @@
 
         <div class="modal-meta-strip" id="modal-meta">
           <!-- Preenchido dinamicamente -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Classificação & Treinamento Personalizado -->
+  <div class="modal-backdrop" id="modal-classify">
+    <div class="modal-classify-box">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="margin: 0; font-size: 1.05rem; color: #fff; display: flex; align-items: center; gap: 8px;">
+          <span>🏷️</span> Classificar Morador
+        </h3>
+        <button class="modal-close-btn" id="modal-classify-close">✕</button>
+      </div>
+
+      <img id="classify-crop-img" src="" alt="Recorte Facial" class="classify-crop-preview">
+      
+      <div style="text-align: center;">
+        <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px;">Selecione um morador conhecido:</div>
+        <div class="classify-options" id="modal-classify-known-chips">
+          <!-- Preenchido dinamicamente com os moradores conhecidos -->
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <label for="classify-custom-input" style="font-size: 0.78rem; color: var(--text-dim);">Ou digite o nome de um novo morador:</label>
+        <div style="display: flex; gap: 8px;">
+          <input type="text" id="classify-custom-input" class="audit-search-input" placeholder="Ex: Karan, Ingrid, Visitante..." style="padding-left: 14px;">
+          <button class="btn-dash btn-primary" id="btn-confirm-classify" style="white-space: nowrap;">Cadastrar</button>
         </div>
       </div>
     </div>
@@ -1695,6 +1911,15 @@
           // Confiança da IA
           const confPct = Math.round((evt.confidence || 0) * 100);
 
+          let actionBtn = "";
+          if (evt.entity_type === "person") {
+            actionBtn = `
+              <button class="btn-table-classify" onclick="openClassifyModal('${eventId}', '${cropUrl}', '${evt.person_name}')">
+                🏷️ Treinar
+              </button>
+            `;
+          }
+
           tr.innerHTML = `
             <td>
               <img src="${cropUrl}" alt="Evidência" class="thumb-evidence" 
@@ -1712,10 +1937,157 @@
                 <span>${confPct}%</span>
               </div>
             </td>
+            <td style="text-align: right;">${actionBtn}</td>
           `;
           tbody.appendChild(tr);
         });
       }
+
+      // Estúdio de Treinamento Biométrico (Auto-Enrollment)
+      let knownPersonsList = [];
+      let pendingClassifyEventId = null;
+
+      async function loadKnownPersons() {
+        try {
+          const res = await fetch("/api/faces");
+          if (res.ok) {
+            const data = await res.json();
+            knownPersonsList = data.known_persons || [];
+          }
+        } catch (e) {
+          console.warn("Erro ao buscar lista de moradores:", e);
+        }
+      }
+
+      async function loadTrainingCandidates() {
+        const container = document.getElementById("training-candidates-list");
+        if (!container) return;
+
+        try {
+          const res = await fetch("/api/faces/candidates?limit=12");
+          if (!res.ok) return;
+          const data = await res.json();
+          const candidates = data.candidates || [];
+
+          if (candidates.length === 0) {
+            container.innerHTML = `
+              <div style="color: var(--text-dim); font-size: 0.8rem; padding: 14px 8px;">
+                ✅ Todos os rostos recentes foram identificados ou não há detecções pendentes no momento.
+              </div>
+            `;
+            return;
+          }
+
+          container.innerHTML = "";
+          candidates.forEach(evt => {
+            const eventId = evt.event_id || evt.id;
+            const cropUrl = `/api/events/${eventId}/crop`;
+            const timeObj = new Date(evt.timestamp);
+            const timeStr = isNaN(timeObj.getTime()) ? evt.timestamp : timeObj.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+
+            const card = document.createElement("div");
+            card.className = "training-card";
+            card.id = `training-card-${eventId}`;
+
+            let chipsHtml = "";
+            const defaultPersons = knownPersonsList.length > 0 ? knownPersonsList : ["Karan", "Ingrid", "Ezequiel", "Sogra"];
+            defaultPersons.slice(0, 4).forEach(person => {
+              chipsHtml += `<button class="btn-enroll-chip" onclick="enrollFace('${eventId}', '${person}')">+ ${person}</button>`;
+            });
+            chipsHtml += `<button class="btn-enroll-chip custom" onclick="openClassifyModal('${eventId}', '${cropUrl}', '${evt.person_name}')">+ Outro</button>`;
+
+            card.innerHTML = `
+              <img src="${cropUrl}" class="training-crop-img" alt="Candidato" title="Clique para inspecionar cena completa"
+                   onclick="openForensicModal('${eventId}', '${evt.person_name}', '${evt.camera_name}', '${timeStr}', '${Math.round((evt.confidence || 0) * 100)}%', '')">
+              <div class="training-meta">
+                <strong>${evt.camera_name || "Câmera"}</strong>
+                <span>${timeStr}</span>
+              </div>
+              <div class="training-actions">
+                ${chipsHtml}
+              </div>
+            `;
+            container.appendChild(card);
+          });
+        } catch (e) {
+          console.error("Erro ao carregar candidatos de treinamento:", e);
+        }
+      }
+
+      window.enrollFace = async function(eventId, personName) {
+        if (!eventId || !personName) return;
+        try {
+          const res = await fetch("/api/faces/classify-event", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ event_id: eventId, person_name: personName })
+          });
+          const result = await res.json();
+          if (res.ok) {
+            // Anima e remove card
+            const card = document.getElementById(`training-card-${eventId}`);
+            if (card) {
+              card.style.transform = "scale(0.8)";
+              card.style.opacity = "0";
+              setTimeout(() => card.remove(), 250);
+            }
+
+            alert(`✅ ${result.message}\nA IA aprendeu com a foto real da câmera!`);
+            
+            // Recarrega lista de conhecidos, dashboard, tabela e candidatos
+            await loadKnownPersons();
+            loadDashboard();
+            loadEventsTable();
+            loadTrainingCandidates();
+          } else {
+            alert(`Erro: ${result.detail || "Falha ao classificar rosto"}`);
+          }
+        } catch (e) {
+          alert("Erro de comunicação ao classificar: " + e);
+        }
+      };
+
+      window.openClassifyModal = function(eventId, cropUrl, currentName) {
+        pendingClassifyEventId = eventId;
+        const modal = document.getElementById("modal-classify");
+        const cropImg = document.getElementById("classify-crop-img");
+        const chipsContainer = document.getElementById("modal-classify-known-chips");
+        const input = document.getElementById("classify-custom-input");
+
+        cropImg.src = cropUrl;
+        input.value = "";
+
+        chipsContainer.innerHTML = "";
+        const personsToDisplay = knownPersonsList.length > 0 ? knownPersonsList : ["Karan", "Ingrid", "Ezequiel", "Sogra"];
+        personsToDisplay.forEach(p => {
+          const btn = document.createElement("button");
+          btn.className = "btn-enroll-chip";
+          btn.textContent = `+ ${p}`;
+          btn.onclick = () => {
+            modal.classList.remove("active");
+            enrollFace(pendingClassifyEventId, p);
+          };
+          chipsContainer.appendChild(btn);
+        });
+
+        modal.classList.add("active");
+      };
+
+      document.getElementById("modal-classify-close").addEventListener("click", () => {
+        document.getElementById("modal-classify").classList.remove("active");
+        pendingClassifyEventId = null;
+      });
+
+      document.getElementById("btn-confirm-classify").addEventListener("click", () => {
+        const input = document.getElementById("classify-custom-input");
+        const name = (input.value || "").trim();
+        if (!name) {
+          alert("Por favor, informe o nome do morador.");
+          return;
+        }
+        document.getElementById("modal-classify").classList.remove("active");
+        enrollFace(pendingClassifyEventId, name);
+      });
 
       // Busca Instantânea
       document.getElementById("audit-search").addEventListener("input", () => {
@@ -1772,6 +2144,9 @@
           <span>ID do Evento: <strong>${id}</strong></span>
           <span>Confiança: <strong>${conf}</strong></span>
           ${plate ? `<span>Placa: <strong>${plate}</strong></span>` : ''}
+          <button class="btn-table-classify" style="margin-left: auto;" onclick="openClassifyModal('${id}', '/api/events/${id}/crop', '${name}')">
+            🏷️ Cadastrar Face como Morador
+          </button>
         `;
 
         // Loaders
@@ -1872,14 +2247,20 @@
       });
 
       // Inicialização
-      loadHeaderTelemetry();
-      loadDashboard();
-      loadEventsTable();
+      async function initDashboard() {
+        await loadKnownPersons();
+        loadHeaderTelemetry();
+        loadDashboard();
+        loadEventsTable();
+        loadTrainingCandidates();
+      }
+      initDashboard();
 
       // Polling sutil a cada 30 segundos
       setInterval(() => {
         loadHeaderTelemetry();
         loadDashboard();
+        loadTrainingCandidates();
       }, 30000);
     });
   </script>

@@ -48,11 +48,13 @@ class Settings(BaseSettings):
 
     # Parâmetros SOTA de Reconhecimento Facial (InsightFace ArcFace / SCRFD)
     face_model_name: str = Field(default="buffalo_l", alias="FACE_MODEL_NAME")
-    face_confidence_threshold: float = Field(default=0.42, alias="FACE_CONFIDENCE_THRESHOLD")
-    face_instant_threshold: float = Field(default=0.52, alias="FACE_INSTANT_THRESHOLD")
-    face_min_size: int = Field(default=20, alias="FACE_MIN_SIZE")
-    face_quality_min_blur: float = Field(default=6.0, alias="FACE_QUALITY_MIN_BLUR")
+    face_det_thresh: float = Field(default=0.22, alias="FACE_DET_THRESH")
+    face_confidence_threshold: float = Field(default=0.38, alias="FACE_CONFIDENCE_THRESHOLD")
+    face_instant_threshold: float = Field(default=0.48, alias="FACE_INSTANT_THRESHOLD")
+    face_min_size: int = Field(default=18, alias="FACE_MIN_SIZE")
+    face_quality_min_blur: float = Field(default=4.5, alias="FACE_QUALITY_MIN_BLUR")
     face_temporal_votes: int = Field(default=2, alias="FACE_TEMPORAL_VOTES")
+    face_augmentation_enabled: bool = Field(default=True, alias="FACE_AUGMENTATION_ENABLED")
 
     # Módulo de Restauração e Super-Resolução Facial SOTA
     face_shadow_lifting_enabled: bool = Field(default=True, alias="FACE_SHADOW_LIFTING_ENABLED")

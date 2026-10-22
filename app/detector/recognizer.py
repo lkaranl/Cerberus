@@ -54,15 +54,16 @@ class FaceRecognizer:
 
             # 1. Tenta modelo de alta capacidade (buffalo_l: ArcFace ResNet-50 w600k_r50)
             target_model = settings.face_model_name or "buffalo_l"
+            det_th = getattr(settings, "face_det_thresh", 0.22)
             try:
-                logger.info(f"Carregando pacote biométrico [{target_model}] com det_size=(640, 640)...")
+                logger.info(f"Carregando pacote biométrico [{target_model}] com det_size=(640, 640), det_thresh={det_th}...")
                 app = FaceAnalysis(name=target_model, providers=providers)
-                app.prepare(ctx_id=ctx_id, det_size=(640, 640), det_thresh=0.35)
+                app.prepare(ctx_id=ctx_id, det_size=(640, 640), det_thresh=det_th)
                 self.engine_name = f"InsightFace ArcFace [{target_model}] (CUDA/SCRFD 640x640) 🚀"
             except Exception as load_err:
                 logger.warning(f"Pacote {target_model} indisponível ({load_err}). Tentando buffalo_s...")
                 app = FaceAnalysis(name="buffalo_s", providers=providers)
-                app.prepare(ctx_id=ctx_id, det_size=(640, 640), det_thresh=0.35)
+                app.prepare(ctx_id=ctx_id, det_size=(640, 640), det_thresh=det_th)
                 self.engine_name = "InsightFace ArcFace [buffalo_s] (CUDA/SCRFD 640x640) 🚀"
 
             self.insight_app = app
@@ -129,10 +130,42 @@ class FaceRecognizer:
         """Número total de vetores biométricos registrados em memória."""
         return sum(len(vecs) for vecs in self.known_gallery.values())
 
+    @staticmethod
+    def generate_surveillance_augmentations(img_bgr: np.ndarray) -> List[np.ndarray]:
+        """
+        Gera variações sintéticas para simular as condições reais de câmeras CFTV:
+        1. Espelhamento horizontal (cobre perfis esquerdo/direito).
+        2. Realce fotométrico CLAHE e compensação de sombras.
+        3. Leve compressão simulada (codec H.264/JPEG).
+        """
+        if img_bgr is None or img_bgr.size == 0:
+            return []
+
+        augs = []
+        try:
+            # 1. Flip horizontal
+            flip = cv2.flip(img_bgr, 1)
+            augs.append(flip)
+
+            # 2. CLAHE / Shadow Lifting
+            clahe_img = FaceRecognizer.enhance_shadow_face(img_bgr, clip_limit=2.5, gamma=0.65)
+            if clahe_img is not None:
+                augs.append(clahe_img)
+
+            # 3. Leve compressão de codec de CFTV (JPEG Q=60)
+            encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 60]
+            _, enc = cv2.imencode(".jpg", img_bgr, encode_param)
+            dec = cv2.imdecode(enc, cv2.IMREAD_COLOR)
+            if dec is not None:
+                augs.append(dec)
+        except Exception:
+            pass
+        return augs
+
     def load_known_faces(self) -> int:
         """
         Escaneia as pastas em data/known_faces/ e gera a Galeria Multi-Embedding (Multi-View).
-        Cada foto válida do morador é indexada individualmente para máxima fidelidade métrica.
+        Aplica Data Augmentation de CFTV (espelhamento, CLAHE e compressão) para cada foto.
         """
         self.known_gallery.clear()
         self.known_embeddings.clear()
@@ -174,6 +207,13 @@ class FaceRecognizer:
                 if emb is not None:
                     embeddings_list.append(emb)
                     total_photos += 1
+
+                    # Data Augmentation de CFTV para enriquecer a galeria
+                    if getattr(settings, "face_augmentation_enabled", True):
+                        for aug_img in self.generate_surveillance_augmentations(raw_bgr):
+                            aug_emb = self._extract_probe_embedding(aug_img)
+                            if aug_emb is not None:
+                                embeddings_list.append(aug_emb)
                 else:
                     logger.warning(f"Face não detectada na foto de cadastro [{person_name}]: {img_path.name}")
 
@@ -188,7 +228,7 @@ class FaceRecognizer:
                 person_count += 1
                 logger.info(f"✅ Morador cadastrado: {person_name} ({len(embeddings_list)} vetores biométricos ativos)")
 
-        logger.info(f"Carregamento biométrico concluído: {person_count} pessoas ({total_photos} fotos processadas).")
+        logger.info(f"Carregamento biométrico concluído: {person_count} pessoas ({total_photos} fotos processadas, {self.gallery_vector_count} vetores indexados).")
         return person_count
 
     @staticmethod

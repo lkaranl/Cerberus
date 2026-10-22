@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel
 
 from app.core.config import settings
 from app.core.fusionsolar_client import fusionsolar_client
@@ -386,8 +387,69 @@ async def get_known_faces():
     from app.detector.recognizer import face_recognizer
     return {
         "is_ready": face_recognizer.is_ready,
-        "known_persons": list(face_recognizer.known_embeddings.keys())
+        "known_persons": list(face_recognizer.known_gallery.keys()) or list(face_recognizer.known_embeddings.keys())
     }
+
+
+class ClassifyEventRequest(BaseModel):
+    event_id: str
+    person_name: str
+
+
+@router.post("/faces/classify-event")
+async def classify_event(payload: ClassifyEventRequest):
+    """
+    Cadastra uma evidência/crop de rosto diretamente no perfil do morador,
+    alimentando a galeria biométrica com a foto real capturada pelas câmeras.
+    """
+    clean_name = payload.person_name.strip()
+    if not clean_name or clean_name.lower() in ["desconhecido", "unknown", "none"]:
+        raise HTTPException(status_code=400, detail="Nome de morador inválido")
+
+    event = await db.get_event_by_id(payload.event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Evento não encontrado no banco de dados")
+
+    crop_path = Path(event.get("crop_path", ""))
+    if not crop_path.exists():
+        crop_path = Path(event.get("full_path", ""))
+        if not crop_path.exists():
+            raise HTTPException(status_code=404, detail="Arquivo de evidência não encontrado no disco")
+
+    # Garante a pasta do morador em data/known_faces
+    target_dir = Path("data/known_faces") / clean_name
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    # Copia a foto para a galeria do morador
+    import shutil
+    dest_filename = f"cctv_{payload.event_id[:8]}_{int(time.time())}.jpg"
+    dest_path = target_dir / dest_filename
+    shutil.copyfile(crop_path, dest_path)
+
+    # Atualiza o histórico do evento no SQLite
+    await db.update_event(payload.event_id, {
+        "person_name": clean_name,
+        "is_known": 1
+    })
+
+    # Recarrega a galeria biométrica instantaneamente
+    from app.detector.recognizer import face_recognizer
+    face_recognizer.load_known_faces()
+
+    return {
+        "status": "success",
+        "message": f"Evidência cadastrada com sucesso para '{clean_name}'!",
+        "person_name": clean_name,
+        "saved_path": str(dest_path),
+        "total_gallery_vectors": face_recognizer.gallery_vector_count
+    }
+
+
+@router.get("/faces/candidates")
+async def get_face_training_candidates(limit: int = 12):
+    """Retorna os eventos mais recentes de pessoas não identificadas para classificação rápida no dashboard."""
+    events = await db.get_recent_events(limit=limit, is_known=False, entity_type="person")
+    return {"candidates": events}
 
 
 @router.post("/faces/reload")
@@ -403,7 +465,7 @@ async def reload_known_entities():
         "persons_loaded": p_count,
         "vehicles_loaded": v_count,
         "pets_loaded": pet_count,
-        "persons": list(face_recognizer.known_embeddings.keys()),
+        "persons": list(face_recognizer.known_gallery.keys()),
         "vehicles": list(visual_matcher.known_vehicles.keys()),
         "pets": list(visual_matcher.known_pets.keys())
     }
