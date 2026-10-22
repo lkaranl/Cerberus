@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 
 from app.core.config import settings
+from app.core.fusionsolar_client import fusionsolar_client
 from app.stream.manager import stream_manager
 from app.storage.database import db
 
@@ -53,14 +54,18 @@ async def whep_proxy(camera_id: str, request: Request):
 @router.get("/weather/solar")
 async def get_weather_solar(lat: float = -15.6014, lon: float = -56.0979):
     """
-    Retorna previsão do tempo e irradiação solar diária (kWh/m²) para hoje e os próximos 3 dias.
-    Permite estimar a geração por metro quadrado de placas solares com base na irradiação global (GHI).
-    Possui cache em memória de 30 minutos.
+    Retorna previsão do tempo e irradiação solar diária (kWh/m²) para hoje e os próximos 3 dias,
+    enriquecido com a telemetria em tempo real da usina Huawei FusionSolar (potência em kW e geração do dia).
+    Possui cache em memória de 30 minutos para o clima, com telemetria solar atualizada dinamicamente.
     """
     global _WEATHER_CACHE
     now = time.time()
+    real_solar = await fusionsolar_client.get_kiosk_data()
+
     if _WEATHER_CACHE["data"] and (now - _WEATHER_CACHE["timestamp"] < 1800):
-        return _WEATHER_CACHE["data"]
+        cached_result = dict(_WEATHER_CACHE["data"])
+        cached_result["real_solar"] = real_solar
+        return cached_result
 
     url = (
         f"https://api.open-meteo.com/v1/forecast?"
@@ -107,7 +112,7 @@ async def get_weather_solar(lat: float = -15.6014, lon: float = -56.0979):
                 mj = radiation_mj[i] if i < len(radiation_mj) and radiation_mj[i] is not None else 21.0
                 # Conversão física: 1 MJ/m² = 0.27778 kWh/m² (MJ / 3.6)
                 kwh_m2 = round(mj / 3.6, 2)
-                # Estimativa de geração real de painel solar (~20% de eficiência fotovoltaica padrão)
+                # Estimativa de geração teórica por m² (~20% de eficiência fotovoltaica padrão)
                 est_generation_kwh = round(kwh_m2 * 0.20, 2)
 
                 if kwh_m2 >= 6.0:
@@ -153,6 +158,7 @@ async def get_weather_solar(lat: float = -15.6014, lon: float = -56.0979):
                 "current_icon": c_icon,
                 "is_day": current.get("is_day", 1),
                 "days": days_forecast,
+                "real_solar": real_solar,
                 "cached_at": now
             }
             _WEATHER_CACHE["data"] = result
@@ -160,7 +166,9 @@ async def get_weather_solar(lat: float = -15.6014, lon: float = -56.0979):
             return result
     except Exception:
         if _WEATHER_CACHE["data"]:
-            return _WEATHER_CACHE["data"]
+            cached = dict(_WEATHER_CACHE["data"])
+            cached["real_solar"] = real_solar
+            return cached
 
         return {
             "current_temp": 31,
@@ -173,8 +181,15 @@ async def get_weather_solar(lat: float = -15.6014, lon: float = -56.0979):
                 {"date": "2026-10-22", "day_index": 1, "day_label": "Amanhã", "temp_max": 36, "temp_min": 24, "solar_kwh_m2": 6.1, "est_generation_kwh": 1.22, "solar_potential": "Excelente", "solar_color": "#FFB300", "weather_code": 1, "weather_desc": "Céu Aberto", "weather_icon": "🌤️"},
                 {"date": "2026-10-23", "day_index": 2, "day_label": "Depois", "temp_max": 34, "temp_min": 23, "solar_kwh_m2": 5.2, "est_generation_kwh": 1.04, "solar_potential": "Bom", "solar_color": "#FFA000", "weather_code": 2, "weather_desc": "Parcialmente Nublado", "weather_icon": "⛅"}
             ],
+            "real_solar": real_solar,
             "fallback": True
         }
+
+
+@router.get("/solar/kiosk")
+async def get_solar_kiosk():
+    """Retorna a telemetria em tempo real da usina Huawei FusionSolar para o frontend."""
+    return await fusionsolar_client.get_kiosk_data()
 
 
 @router.get("/cameras")

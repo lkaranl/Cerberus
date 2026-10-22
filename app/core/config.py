@@ -99,6 +99,15 @@ class Settings(BaseSettings):
     edge_vlm_model: str = Field(default="vikhyatk/moondream2", alias="EDGE_VLM_MODEL")
     edge_vlm_revision: str = Field(default="", alias="EDGE_VLM_REVISION")
 
+    # Módulo de Integração com Usina Solar (Huawei FusionSolar Kiosk)
+    fusionsolar_enabled: bool = Field(default=True, alias="FUSIONSOLAR_ENABLED")
+    fusionsolar_api_url: str = Field(default="http://localhost:9666", alias="FUSIONSOLAR_API_URL")
+    fusionsolar_kiosk_url: str = Field(
+        default="https://intl.fusionsolar.huawei.com/pvmswebsite/nologin/assets/build/cloud.html#/kiosk?kk=EM6wrnyAhBtOFvD7rdNu045xGpwb1bGD",
+        alias="FUSIONSOLAR_KIOSK_URL"
+    )
+    fusionsolar_cache_seconds: int = Field(default=90, alias="FUSIONSOLAR_CACHE_SECONDS")
+
     def resolve_device(self) -> str:
         """
         Resolve dinamicamente o melhor dispositivo de inferência disponível,
