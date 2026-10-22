@@ -236,14 +236,28 @@ async def get_events(
 
 @router.get("/events/{event_id}/crop")
 async def get_event_crop(event_id: str):
-    """Retorna a imagem recortada (crop) da pessoa detectada com cache HTTP."""
+    """Retorna a imagem recortada (crop) da pessoa detectada com cache HTTP e resolução resiliente."""
     event = await db.get_event_by_id(event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Evento não encontrado")
 
     crop_path = Path(event["crop_path"])
     if not crop_path.exists():
-        raise HTTPException(status_code=404, detail="Arquivo de recorte não encontrado")
+        # Tenta localizar diretamente dentro de settings.events_dir
+        alt_crop = Path(settings.events_dir) / crop_path.name
+        if alt_crop.exists():
+            crop_path = alt_crop
+        else:
+            # Fallback gracioso para full_path se o crop não estiver disponível
+            full_path = Path(event.get("full_path", ""))
+            if full_path.exists():
+                crop_path = full_path
+            else:
+                alt_full = Path(settings.events_dir) / full_path.name
+                if alt_full.exists():
+                    crop_path = alt_full
+                else:
+                    raise HTTPException(status_code=404, detail="Arquivo de recorte não encontrado")
 
     return FileResponse(
         crop_path,
@@ -266,7 +280,11 @@ async def get_event_full(event_id: str, raw: bool = False):
 
     full_path = Path(event["full_path"])
     if not full_path.exists():
-        raise HTTPException(status_code=404, detail="Arquivo de snapshot completo não encontrado")
+        alt_full = Path(settings.events_dir) / full_path.name
+        if alt_full.exists():
+            full_path = alt_full
+        else:
+            raise HTTPException(status_code=404, detail="Arquivo de snapshot completo não encontrado")
 
     cache_headers = {"Cache-Control": "public, max-age=604800, immutable"}
 
