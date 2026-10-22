@@ -607,20 +607,159 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (e) {}
   }
 
-  // --- 7. Radar de Presença em Tempo Real ---
+  // --- 7. Radar de Presença Multi-Câmera Dedicado (2x Portão, 1x Garagem, 1x Fundo) ---
+  const radarDedicatedSlots = [
+    { id: "slot-portao-1", target: "portao", defaultName: "Câmera do Portão", sublabel: "Portão • Atual", evt: null },
+    { id: "slot-portao-2", target: "portao", defaultName: "Câmera do Portão", sublabel: "Portão • Anterior", evt: null },
+    { id: "slot-garagem",   target: "garagem", defaultName: "Câmera da Garagem", sublabel: "Câmera da Garagem", evt: null },
+    { id: "slot-fundo",     target: "fundo",   defaultName: "Câmera Área do Fundo", sublabel: "Área do Fundo", evt: null }
+  ];
+
+  function getCameraSlotType(evt) {
+    const cid = String(evt.camera_id || "").toLowerCase();
+    const cname = String(evt.camera_name || "").toLowerCase();
+    if (cid === "cam-0" || cname.includes("portão") || cname.includes("portao")) {
+      return "portao";
+    }
+    if (cid === "cam-1" || cname.includes("garagem")) {
+      return "garagem";
+    }
+    if (cid === "cam-2" || cname.includes("fundo") || cname.includes("fundos") || cname.includes("quintal")) {
+      return "fundo";
+    }
+    return "portao";
+  }
+
+  function renderAllRadarSlots() {
+    if (!dom.radarFeed) return;
+    if (dom.radarEmpty && dom.radarEmpty.parentNode) {
+      dom.radarEmpty.remove();
+    }
+
+    dom.radarFeed.innerHTML = "";
+
+    radarDedicatedSlots.forEach((slotDef) => {
+      const card = createRadarSlotCard(slotDef);
+      dom.radarFeed.appendChild(card);
+    });
+  }
+
+  function createRadarSlotCard(slotDef) {
+    const evt = slotDef.evt;
+    const item = document.createElement("div");
+    item.className = "radar-item";
+    item.id = `radar-${slotDef.id}`;
+
+    if (!evt) {
+      item.classList.add("radar-item-standby");
+      item.innerHTML = `
+        <div class="radar-thumb-wrap radar-thumb-standby">
+          <span class="standby-cam-icon">📹</span>
+        </div>
+        <div class="radar-item-content">
+          <div class="radar-card-top">
+            <span class="radar-item-badge standby">MONITORANDO</span>
+          </div>
+          <div class="radar-item-cam-row">
+            <span class="radar-cam-dot standby"></span>
+            <span class="radar-item-camera-label">${slotDef.sublabel}</span>
+          </div>
+          <div class="radar-card-bottom">
+            <span class="radar-standby-txt">Sem atividade</span>
+          </div>
+        </div>
+      `;
+      return item;
+    }
+
+    const eventId = evt.event_id || evt.id;
+    item.setAttribute("data-event-id", eventId);
+
+    const timeObj = new Date(evt.timestamp);
+    const timeFormatted = isNaN(timeObj.getTime())
+      ? evt.timestamp
+      : timeObj.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+
+    let timeAgo = "";
+    if (!isNaN(timeObj.getTime())) {
+      const diffSec = Math.max(0, Math.floor((Date.now() - timeObj.getTime()) / 1000));
+      if (diffSec < 60) {
+        timeAgo = "agora";
+      } else if (diffSec < 3600) {
+        timeAgo = `há ${Math.floor(diffSec / 60)}m`;
+      } else if (diffSec < 86400) {
+        timeAgo = `há ${Math.floor(diffSec / 3600)}h`;
+      }
+    }
+
+    const cropUrl = `/api/events/${eventId}/crop`;
+    const { badgeClass, badgeText, primaryTitle } = parseRadarEvent(evt);
+    const camDisplay = slotDef.sublabel;
+
+    item.innerHTML = `
+      <div class="radar-thumb-wrap">
+        <img class="radar-item-thumb" src="${cropUrl}" alt="Evidência" loading="lazy" onerror="this.src='/static/img/placeholder.png'">
+      </div>
+      <div class="radar-item-content">
+        <div class="radar-card-top">
+          <span class="radar-item-badge ${badgeClass}">${badgeText}</span>
+          ${primaryTitle ? `<span class="radar-item-name" title="${primaryTitle}">${primaryTitle}</span>` : ""}
+        </div>
+        <div class="radar-item-cam-row">
+          <span class="radar-cam-dot"></span>
+          <span class="radar-item-camera-label">${camDisplay}</span>
+        </div>
+        <div class="radar-card-bottom">
+          <span class="radar-item-time mono">${timeFormatted}</span>
+          ${timeAgo ? `<span class="radar-item-ago">${timeAgo}</span>` : ""}
+        </div>
+      </div>
+    `;
+
+    item.addEventListener("click", () => openModal(evt));
+    return item;
+  }
+
   async function loadRecentEvents() {
     try {
-      const res = await fetch("/api/events?limit=4");
+      const res = await fetch("/api/events?limit=80");
       if (!res.ok) return;
       const data = await res.json();
+      const events = data.events || [];
 
-      if (data.events && data.events.length > 0) {
-        if (dom.radarEmpty) dom.radarEmpty.remove();
-        data.events.slice(0, 4).forEach(evt => {
-          renderRadarItem(evt, false);
-        });
-      }
+      // 1. Portão (cam-0): mais recente e anterior
+      const portaoEvts = events.filter(e => getCameraSlotType(e) === "portao");
+      if (portaoEvts[0]) radarDedicatedSlots[0].evt = portaoEvts[0];
+      if (portaoEvts[1]) radarDedicatedSlots[1].evt = portaoEvts[1];
+
+      // 2. Garagem (cam-1): mais recente
+      const garagemEvts = events.filter(e => getCameraSlotType(e) === "garagem");
+      if (garagemEvts[0]) radarDedicatedSlots[2].evt = garagemEvts[0];
+
+      // 3. Fundo (cam-2): mais recente
+      const fundoEvts = events.filter(e => getCameraSlotType(e) === "fundo");
+      if (fundoEvts[0]) radarDedicatedSlots[3].evt = fundoEvts[0];
+
+      renderAllRadarSlots();
     } catch (e) {}
+  }
+
+  function handleNewRadarEvent(evt) {
+    const type = getCameraSlotType(evt);
+    if (type === "portao") {
+      const curFirst = radarDedicatedSlots[0].evt;
+      const curFirstId = curFirst ? (curFirst.event_id || curFirst.id) : null;
+      const newId = evt.event_id || evt.id;
+      if (curFirstId !== newId) {
+        radarDedicatedSlots[1].evt = curFirst;
+      }
+      radarDedicatedSlots[0].evt = evt;
+    } else if (type === "garagem") {
+      radarDedicatedSlots[2].evt = evt;
+    } else if (type === "fundo") {
+      radarDedicatedSlots[3].evt = evt;
+    }
+    renderAllRadarSlots();
   }
 
   function connectEventsWebSocket() {
@@ -633,11 +772,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const payload = JSON.parse(event.data);
         if (payload.type === "PERSON_DETECTED" && payload.data) {
           const evt = payload.data;
-          if (dom.radarEmpty && dom.radarEmpty.parentNode) {
-            dom.radarEmpty.remove();
-          }
-
-          renderRadarItem(evt, true);
+          handleNewRadarEvent(evt);
           flashSlotAlert(evt.camera_id, evt.entity_type, evt.is_known);
         } else if (payload.type === "EVENT_UPDATED" && payload.data) {
           updateRadarItem(payload.data);
@@ -705,85 +840,18 @@ document.addEventListener("DOMContentLoaded", () => {
     return { badgeClass, badgeText, primaryTitle };
   }
 
-  function renderRadarItem(evt, isNew = false) {
-    const eventId = evt.event_id || evt.id;
-    const item = document.createElement("div");
-    item.className = "radar-item";
-    item.id = `radar-item-${eventId}`;
-
-    const timeObj = new Date(evt.timestamp);
-    const timeFormatted = isNaN(timeObj.getTime())
-      ? evt.timestamp
-      : timeObj.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-
-    let timeAgo = "";
-    if (!isNaN(timeObj.getTime())) {
-      const diffSec = Math.max(0, Math.floor((Date.now() - timeObj.getTime()) / 1000));
-      if (diffSec < 60) {
-        timeAgo = "agora";
-      } else if (diffSec < 3600) {
-        timeAgo = `há ${Math.floor(diffSec / 60)}m`;
-      } else if (diffSec < 86400) {
-        timeAgo = `há ${Math.floor(diffSec / 3600)}h`;
-      }
-    }
-
-    const cropUrl = `/api/events/${eventId}/crop`;
-    const { badgeClass, badgeText, primaryTitle } = parseRadarEvent(evt);
-    const camName = evt.camera_name || evt.camera_id;
-
-    item.innerHTML = `
-      <div class="radar-thumb-wrap">
-        <img class="radar-item-thumb" src="${cropUrl}" alt="Evidência" loading="lazy" onerror="this.src='/static/img/placeholder.png'">
-      </div>
-      <div class="radar-item-content">
-        <div class="radar-card-top">
-          <span class="radar-item-badge ${badgeClass}">${badgeText}</span>
-          ${primaryTitle ? `<span class="radar-item-name" title="${primaryTitle}">${primaryTitle}</span>` : ""}
-        </div>
-        <div class="radar-item-cam-row">
-          <span class="radar-cam-dot"></span>
-          <span class="radar-item-camera-label">${camName}</span>
-        </div>
-        <div class="radar-card-bottom">
-          <span class="radar-item-time mono">${timeFormatted}</span>
-          ${timeAgo ? `<span class="radar-item-ago">${timeAgo}</span>` : ""}
-        </div>
-      </div>
-    `;
-
-    item.addEventListener("click", () => openModal(evt));
-
-    if (isNew) {
-      dom.radarFeed.prepend(item);
-      while (dom.radarFeed.children.length > 4) {
-        dom.radarFeed.removeChild(dom.radarFeed.lastChild);
-      }
-    } else {
-      if (dom.radarFeed.children.length < 4) {
-        dom.radarFeed.appendChild(item);
-      }
-    }
-  }
-
   function updateRadarItem(evt) {
     const eventId = evt.event_id || evt.id;
-    const item = document.getElementById(`radar-item-${eventId}`);
-    if (!item) return;
+    let found = false;
+    radarDedicatedSlots.forEach(slot => {
+      if (slot.evt && (slot.evt.event_id === eventId || slot.evt.id === eventId)) {
+        slot.evt = { ...slot.evt, ...evt };
+        found = true;
+      }
+    });
 
-    const img = item.querySelector(".radar-item-thumb");
-    if (img) img.src = `/api/events/${eventId}/crop?t=${Date.now()}`;
-
-    const { badgeClass, badgeText, primaryTitle } = parseRadarEvent(evt);
-    const badgeEl = item.querySelector(".radar-item-badge");
-    if (badgeEl) {
-      badgeEl.className = `radar-item-badge ${badgeClass}`;
-      badgeEl.textContent = badgeText;
-    }
-
-    const nameEl = item.querySelector(".radar-item-name");
-    if (nameEl && primaryTitle) {
-      nameEl.textContent = primaryTitle;
+    if (found) {
+      renderAllRadarSlots();
     }
 
     if (state.activeModalEventId === eventId) {

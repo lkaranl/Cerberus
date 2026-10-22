@@ -906,6 +906,42 @@ body.clean-cctv-body {
   border: 1px solid rgba(255, 145, 0, 0.35);
 }
 
+/* Estado Standby de Câmera Aguardando Detecção */
+.radar-item-standby {
+  opacity: 0.60;
+  border-style: dashed;
+}
+
+.radar-thumb-standby {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.02) !important;
+  border: 1px dashed rgba(255, 255, 255, 0.15) !important;
+}
+
+.standby-cam-icon {
+  font-size: 1.6rem;
+  opacity: 0.35;
+}
+
+.radar-item-badge.standby {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-dim);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.radar-cam-dot.standby {
+  background: var(--text-dim);
+  box-shadow: none;
+}
+
+.radar-standby-txt {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--text-dim);
+}
+
 /* =========================================================================
    MODAL DE INSPEÇÃO BIOMÉTRICA
    ========================================================================= */
