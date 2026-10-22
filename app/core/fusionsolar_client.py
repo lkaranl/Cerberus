@@ -6,6 +6,7 @@ sem depender de nenhum microserviço intermediário ou instância de navegador h
 """
 
 import re
+import html
 import json
 import time
 import urllib.parse
@@ -93,6 +94,7 @@ class FusionSolarClient:
         self._cache: Dict[str, Any] = {}
         self._last_fetch_ts: float = 0.0
         self._last_error: str = "Nenhum erro registrado"
+        self._raw_preview: str = ""
         self._lock = asyncio.Lock()
 
     def _sync_http_fetch(self, url: str) -> Optional[Dict[str, Any]]:
@@ -120,6 +122,7 @@ class FusionSolarClient:
             )
             if resp.status_code == 200:
                 data = resp.json()
+                self._raw_preview = str(data)[:250]
                 self._last_error = ""
                 return data
             else:
@@ -183,12 +186,14 @@ class FusionSolarClient:
                 logger.warning(f"[FusionSolar] Resposta da Huawei não possui campo 'data': {raw_resp}")
                 return None
 
-            # O payload interno 'data' vem como string JSON codificada
+            # O payload interno 'data' vem como string JSON codificada com HTML entities (&quot;)
             if isinstance(raw_data, str):
-                station_data = json.loads(raw_data)
+                unescaped = html.unescape(raw_data)
+                station_data = json.loads(unescaped)
             elif isinstance(raw_data, dict):
                 station_data = raw_data
             else:
+                self._last_error = f"Tipo inesperado em 'data': {type(raw_data)}"
                 return None
 
             real_kpi = station_data.get("realKpi", {})
@@ -245,6 +250,7 @@ class FusionSolarClient:
                 "updated_at": time.time()
             }
         except Exception as e:
+            self._last_error = f"Erro no parse de data: {e}"
             logger.warning(f"[FusionSolar] Erro ao decodificar payload REST da Huawei: {e}")
             return None
 
@@ -332,6 +338,7 @@ class FusionSolarClient:
             "fusionsolar_kiosk_url": settings.fusionsolar_kiosk_url,
             "target_rest_url": rest_url,
             "last_error": self._last_error,
+            "raw_preview": self._raw_preview,
             "cache_age_seconds": round(time.time() - self._last_fetch_ts, 1) if self._last_fetch_ts else None,
             "has_cache": bool(self._cache),
             "fetch_result": fetch_result,
