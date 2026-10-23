@@ -1259,44 +1259,252 @@ body.clean-cctv-body {
    ========================================================================= */
 @media (max-width: 1440px), (max-height: 850px) {
   .cctv-quadrant-info {
-    padding: 10px 14px;
-    gap: 14px;
+    padding: 8px 12px;
+    gap: 12px;
   }
 
   .quadrant-left-stack {
-    flex: 0 0 300px;
+    flex: 0 0 280px;
+    height: 100%;
+    max-height: 360px;
     gap: 8px;
   }
 
   .apple-clock-card {
-    width: 300px;
-    height: 160px;
+    width: 280px;
+    height: 145px;
   }
 
   .apple-digit {
-    font-size: 4.2rem;
+    font-size: 3.8rem;
+  }
+
+  .apple-colon {
+    font-size: 3.4rem;
   }
 
   .solar-weather-card {
-    width: 300px;
+    width: 280px;
+    height: 185px;
+    padding: 8px 10px 6px;
+    gap: 6px;
+  }
+
+  .solar-hero-metrics {
+    padding: 6px 4px;
+  }
+
+  .hero-stat-number {
+    font-size: 1.7rem;
+  }
+
+  .solar-hero-divider {
+    height: 32px;
   }
 
   .cctv-radar-widget {
-    height: 345px;
-    padding: 10px 12px;
+    height: 100%;
+    max-height: 360px;
+    padding: 8px 10px;
+    min-width: 220px;
   }
 
   .radar-events-feed {
-    gap: 8px;
+    gap: 6px;
   }
 
   .radar-thumb-wrap {
-    width: 95px;
-    max-height: 105px;
+    width: 82px;
+    max-height: 92px;
+  }
+
+  .radar-item {
+    padding: 6px;
+    gap: 6px;
+  }
+
+  .radar-item-name {
+    font-size: 0.76rem;
+  }
+
+  .radar-item-cam-row {
+    font-size: 0.68rem;
   }
 }
 
-@media (max-width: 1200px) {
+/* Telas HD / TV 32" (1360x768, 1366x768 ou 1280x720) */
+@media (max-width: 1366px), (max-height: 780px) {
+  .cctv-quadrant-info {
+    padding: 6px 8px;
+    gap: 8px;
+  }
+
+  .quadrant-left-stack {
+    flex: 0 0 240px;
+    max-height: 340px;
+    gap: 6px;
+  }
+
+  .apple-clock-card {
+    width: 240px;
+    height: 130px;
+    border-radius: 16px;
+  }
+
+  .apple-dial-header {
+    margin-bottom: 2px;
+  }
+
+  .apple-dial-date {
+    font-size: 0.62rem;
+  }
+
+  .apple-status-text {
+    font-size: 0.52rem;
+  }
+
+  .apple-digit {
+    font-size: 3.1rem;
+    letter-spacing: -1px;
+  }
+
+  .apple-colon {
+    font-size: 2.8rem;
+  }
+
+  .apple-seconds-pill {
+    font-size: 0.85rem;
+    padding: 1px 4px;
+  }
+
+  .apple-dial-footer {
+    margin-top: 2px;
+  }
+
+  .apple-sub-metric {
+    font-size: 0.58rem;
+  }
+
+  .solar-weather-card {
+    width: 240px;
+    height: 165px;
+    border-radius: 14px;
+    padding: 6px 8px 5px;
+    gap: 4px;
+  }
+
+  .solar-card-header {
+    padding-bottom: 4px;
+  }
+
+  .solar-card-title {
+    font-size: 0.58rem;
+  }
+
+  .solar-hero-metrics {
+    padding: 4px;
+    border-radius: 8px;
+  }
+
+  .hero-stat-label {
+    font-size: 0.46rem;
+  }
+
+  .hero-stat-icon {
+    font-size: 0.85rem;
+  }
+
+  .hero-stat-number {
+    font-size: 1.4rem;
+  }
+
+  .hero-stat-unit {
+    font-size: 0.58rem;
+  }
+
+  .solar-hero-divider {
+    height: 24px;
+  }
+
+  .solar-forecast-strip {
+    padding: 3px 6px;
+  }
+
+  .forecast-day-name {
+    font-size: 0.50rem;
+  }
+
+  .forecast-day-icon {
+    font-size: 0.68rem;
+  }
+
+  .forecast-day-temp {
+    font-size: 0.58rem;
+  }
+
+  .cctv-radar-widget {
+    height: 100%;
+    max-height: 340px;
+    min-width: 0;
+    padding: 6px 8px;
+    border-radius: 14px;
+  }
+
+  .radar-header {
+    margin-bottom: 6px;
+    padding-bottom: 4px;
+  }
+
+  .radar-title {
+    font-size: 0.68rem;
+    letter-spacing: 1px;
+  }
+
+  .radar-dash-link {
+    font-size: 0.62rem;
+    padding: 2px 5px;
+  }
+
+  .radar-events-feed {
+    gap: 6px;
+  }
+
+  .radar-item {
+    padding: 4px 6px;
+    gap: 6px;
+    border-radius: 8px;
+  }
+
+  .radar-thumb-wrap {
+    width: 68px;
+    max-height: 76px;
+    border-radius: 6px;
+  }
+
+  .radar-card-top {
+    gap: 1px;
+  }
+
+  .radar-item-badge {
+    font-size: 0.50rem;
+    padding: 1px 4px;
+  }
+
+  .radar-item-name {
+    font-size: 0.70rem;
+  }
+
+  .radar-item-cam-row {
+    font-size: 0.60rem;
+    gap: 4px;
+  }
+
+  .radar-item-time-stamp {
+    font-size: 0.56rem;
+  }
+}
+
+@media (max-width: 1024px) {
   .cctv-quadrant-info {
     flex-direction: column;
     overflow-y: auto;
@@ -1307,11 +1515,13 @@ body.clean-cctv-body {
   .quadrant-left-stack {
     flex: 0 0 auto;
     width: 100%;
+    max-height: none;
   }
 
   .cctv-radar-widget {
     width: 100%;
     max-width: 100%;
     height: 280px;
+    max-height: none;
   }
 }
