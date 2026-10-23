@@ -1081,6 +1081,44 @@
       justify-content: center;
     }
 
+    .upload-dropzone {
+      border: 2px dashed rgba(0, 230, 118, 0.35);
+      border-radius: var(--radius-md);
+      background: rgba(0, 230, 118, 0.03);
+      padding: 18px 12px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .upload-dropzone:hover, .upload-dropzone.dragover {
+      border-color: var(--accent-emerald);
+      background: rgba(0, 230, 118, 0.08);
+      box-shadow: 0 0 16px rgba(0, 230, 118, 0.15);
+    }
+
+    .upload-previews {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 8px 0 4px 0;
+      margin-top: 6px;
+    }
+
+    .upload-preview-thumb {
+      width: 54px;
+      height: 54px;
+      border-radius: 6px;
+      object-fit: cover;
+      border: 1px solid var(--border-subtle);
+      background: #000;
+      flex-shrink: 0;
+    }
+
     /* Responsividade */
     @media (max-width: 1100px) {
       .analytics-main-grid {
@@ -1363,9 +1401,9 @@
       </div>
     </section>
 
-    <!-- Estúdio de Treinamento Biométrico & Classificação de Rostos -->
+    <!-- Estúdio de Treinamento Biométrico & Classificação Multimodal -->
     <section class="panel-card training-panel" id="face-trainer-section">
-      <div class="panel-header">
+      <div class="panel-header" style="flex-wrap: wrap; gap: 12px; align-items: center;">
         <div class="panel-title-wrap">
           <h3 class="panel-title">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-emerald)" stroke-width="2">
@@ -1374,23 +1412,34 @@
               <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
               <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
             </svg>
-            Classificação Biométrica & Treinamento de Rostos (Auto-Enrollment)
+            Estúdio de Treinamento & Cadastros (Auto-Enrollment)
           </h3>
         </div>
-        <div id="training-stats-badge">
-          <span class="brand-tag" style="background: rgba(0, 230, 118, 0.12); color: var(--accent-emerald); border-color: rgba(0, 230, 118, 0.3);">
-            ⚡ Atribua rostos das câmeras para ensinar a IA com os ângulos reais
-          </span>
+
+        <!-- Abas Seletoras de Candidatos + Botão Novo Cadastro Direto -->
+        <div style="display: flex; align-items: center; gap: 10px; margin-left: auto; flex-wrap: wrap;">
+          <div class="filter-pills-wrap" id="candidate-type-tabs" style="margin: 0;">
+            <button class="pill-tab active cand-tab-btn" data-cand="person">👤 Pessoas</button>
+            <button class="pill-tab cand-tab-btn" data-cand="vehicle">🚗 Veículos</button>
+            <button class="pill-tab cand-tab-btn" data-cand="pet">🐾 Pets</button>
+          </div>
+          <button class="btn-dash btn-primary" id="btn-open-manual-upload" style="white-space: nowrap; gap: 6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            + Novo Cadastro por Foto
+          </button>
         </div>
       </div>
 
-      <p class="panel-subtitle">
-        Rostos recentes detectados sem identificação definitiva. Clique no morador correspondente para salvar o snapshot real da câmera na biometria:
+      <p class="panel-subtitle" id="training-subtitle">
+        Pessoas recentes detectadas sem identificação definitiva. Clique no morador correspondente para salvar o snapshot real da câmera na biometria:
       </p>
 
-      <!-- Carrossel de Rostos Candidatos Recentes -->
+      <!-- Carrossel de Candidatos Recentes por Categoria -->
       <div class="training-cards-track" id="training-candidates-list">
-        <div style="color: var(--text-dim); font-size: 0.8rem; padding: 18px;">Buscando rostos desconhecidos para classificação...</div>
+        <div style="color: var(--text-dim); font-size: 0.8rem; padding: 18px;">Buscando candidatos desconhecidos para classificação...</div>
       </div>
     </section>
 
@@ -1504,31 +1553,100 @@
     </div>
   </div>
 
-  <!-- Modal de Classificação & Treinamento Personalizado -->
+  <!-- Modal de Classificação & Treinamento Contextual -->
   <div class="modal-backdrop" id="modal-classify">
     <div class="modal-classify-box">
       <div style="display: flex; justify-content: space-between; align-items: center;">
         <h3 style="margin: 0; font-size: 1.05rem; color: #fff; display: flex; align-items: center; gap: 8px;">
-          <span>🏷️</span> Classificar Morador
+          <span id="classify-modal-icon">🏷️</span> <span id="classify-modal-title">Classificar Morador</span>
         </h3>
         <button class="modal-close-btn" id="modal-classify-close">✕</button>
       </div>
 
-      <img id="classify-crop-img" src="" alt="Recorte Facial" class="classify-crop-preview">
+      <img id="classify-crop-img" src="" alt="Recorte" class="classify-crop-preview">
       
       <div style="text-align: center;">
-        <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px;">Selecione um morador conhecido:</div>
+        <div id="classify-known-label" style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px;">Selecione um morador conhecido:</div>
         <div class="classify-options" id="modal-classify-known-chips">
-          <!-- Preenchido dinamicamente com os moradores conhecidos -->
+          <!-- Preenchido dinamicamente -->
         </div>
       </div>
 
-      <div style="display: flex; flex-direction: column; gap: 8px;">
-        <label for="classify-custom-input" style="font-size: 0.78rem; color: var(--text-dim);">Ou digite o nome de um novo morador:</label>
-        <div style="display: flex; gap: 8px;">
-          <input type="text" id="classify-custom-input" class="audit-search-input" placeholder="Ex: Karan, Ingrid, Visitante..." style="padding-left: 14px;">
-          <button class="btn-dash btn-primary" id="btn-confirm-classify" style="white-space: nowrap;">Cadastrar</button>
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <div>
+          <label id="classify-custom-label" for="classify-custom-input" style="font-size: 0.78rem; color: var(--text-dim); display: block; margin-bottom: 4px;">Ou digite o nome de um novo morador:</label>
+          <input type="text" id="classify-custom-input" class="audit-search-input" placeholder="Ex: Karan, Ingrid, Visitante..." style="padding-left: 14px; width: 100%;">
         </div>
+
+        <div id="classify-plate-container" style="display: none;">
+          <label for="classify-plate-input" style="font-size: 0.78rem; color: var(--text-dim); display: block; margin-bottom: 4px;">Placa Mercosul / Cinza (Opcional):</label>
+          <input type="text" id="classify-plate-input" class="audit-search-input" placeholder="Ex: BRA2E19 ou NEC4J83" style="padding-left: 14px; width: 100%; text-transform: uppercase;">
+        </div>
+
+        <button class="btn-dash btn-primary" id="btn-confirm-classify" style="white-space: nowrap; width: 100%; justify-content: center; margin-top: 4px;">
+          Cadastrar e Ensinar IA
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Cadastro Manual Direto por Fotos -->
+  <div class="modal-backdrop" id="modal-manual-upload">
+    <div class="modal-classify-box" style="width: 500px;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="margin: 0; font-size: 1.05rem; color: #fff; display: flex; align-items: center; gap: 8px;">
+          <span>➕</span> Novo Cadastro Manual por Foto
+        </h3>
+        <button class="modal-close-btn" id="modal-manual-close">✕</button>
+      </div>
+
+      <!-- Seletor de Categoria -->
+      <div>
+        <div style="font-size: 0.78rem; color: var(--text-dim); margin-bottom: 6px;">Categoria da entidade:</div>
+        <div class="filter-pills-wrap" id="manual-upload-type-tabs" style="margin: 0; width: 100%;">
+          <button type="button" class="pill-tab active manual-type-tab" data-type="person" style="flex: 1; text-align: center;">👤 Morador</button>
+          <button type="button" class="pill-tab manual-type-tab" data-type="vehicle" style="flex: 1; text-align: center;">🚗 Veículo</button>
+          <button type="button" class="pill-tab manual-type-tab" data-type="pet" style="flex: 1; text-align: center;">🐾 Pet</button>
+        </div>
+      </div>
+
+      <!-- Campos de Texto -->
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <div>
+          <label id="manual-name-label" for="manual-name-input" style="font-size: 0.78rem; color: var(--text-dim); display: block; margin-bottom: 4px;">Nome do Morador:</label>
+          <input type="text" id="manual-name-input" class="audit-search-input" placeholder="Ex: Karan, Ingrid..." style="padding-left: 14px; width: 100%;">
+        </div>
+        
+        <div id="manual-plate-container" style="display: none;">
+          <label for="manual-plate-input" style="font-size: 0.78rem; color: var(--text-dim); display: block; margin-bottom: 4px;">Placa Mercosul / Cinza (Opcional):</label>
+          <input type="text" id="manual-plate-input" class="audit-search-input" placeholder="Ex: BRA2E19 ou NEC4J83" style="padding-left: 14px; width: 100%; text-transform: uppercase;">
+        </div>
+      </div>
+
+      <!-- Área de Upload Drag & Drop -->
+      <div>
+        <label style="font-size: 0.78rem; color: var(--text-dim); display: block; margin-bottom: 4px;">Fotos de Referência:</label>
+        <div class="upload-dropzone" id="manual-dropzone">
+          <input type="file" id="manual-file-input" multiple accept="image/jpeg,image/png,image/webp" style="display: none;">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--accent-emerald)" stroke-width="1.8" style="margin-bottom: 6px;">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <div style="font-size: 0.82rem; color: var(--text-main); font-weight: 500;">
+            Arraste fotos aqui ou <span style="color: var(--accent-emerald); text-decoration: underline; cursor: pointer;">clique para escolher</span>
+          </div>
+          <div style="font-size: 0.72rem; color: var(--text-dim); margin-top: 4px;">JPG, PNG ou WEBP (1 ou mais fotos)</div>
+        </div>
+        <div id="manual-previews" class="upload-previews" style="display: none;"></div>
+      </div>
+
+      <!-- Rodapé com Botões -->
+      <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px;">
+        <button class="btn-dash" id="btn-manual-cancel" type="button">Cancelar</button>
+        <button class="btn-dash btn-primary" id="btn-manual-submit" type="button" style="white-space: nowrap;">
+          Salvar e Sincronizar na GPU
+        </button>
       </div>
     </div>
   </div>
@@ -1930,10 +2048,12 @@
           const confPct = Math.round((evt.confidence || 0) * 100);
 
           let actionBtn = "";
-          if (evt.entity_type === "person") {
+          if (!evt.is_known) {
+            const entType = evt.entity_type || "person";
+            const typeIcon = entType === "vehicle" ? "🚗" : (entType === "pet" ? "🐾" : "👤");
             actionBtn = `
-              <button class="btn-table-classify" onclick="openClassifyModal('${eventId}', '${cropUrl}', '${evt.person_name}')">
-                🏷️ Treinar
+              <button class="btn-table-classify" onclick="openClassifyModal('${eventId}', '${cropUrl}', '${evt.person_name || ''}', '${entType}', '${evt.license_plate || ''}')">
+                ${typeIcon} Treinar
               </button>
             `;
           }
@@ -1942,7 +2062,7 @@
             <td>
               <img src="${cropUrl}" alt="Evidência" class="thumb-evidence" 
                    onmouseenter="prefetchEvent('${eventId}')" 
-                   onclick="openForensicModal('${eventId}', '${evt.person_name}', '${evt.camera_name}', '${formattedTime}', '${confPct}%', '${evt.license_plate || ''}')">
+                   onclick="openForensicModal('${eventId}', '${evt.person_name}', '${evt.camera_name}', '${formattedTime}', '${confPct}%', '${evt.license_plate || ''}', '${evt.entity_type || 'person'}')">
             </td>
             <td><span style="font-size: 0.76rem; color: var(--text-muted); font-weight: 500;">${typeLabel}</span></td>
             <td><span class="badge-forensic ${badgeClass}">${evt.person_name}</span></td>
@@ -1961,19 +2081,34 @@
         });
       }
 
-      // Estúdio de Treinamento Biométrico (Auto-Enrollment)
+      // Estúdio de Treinamento Biométrico & Multimodal (Auto-Enrollment)
+      let knownEntities = { persons: [], vehicles: [], pets: [] };
       let knownPersonsList = [];
+      let currentCandidateType = "person";
       let pendingClassifyEventId = null;
+      let pendingClassifyEntityType = "person";
+      let manualSelectedFiles = [];
+      let manualSelectedType = "person";
 
-      async function loadKnownPersons() {
+      async function loadKnownEntities() {
         try {
-          const res = await fetch("/api/faces");
+          const res = await fetch("/api/entities/known");
           if (res.ok) {
             const data = await res.json();
-            knownPersonsList = data.known_persons || [];
+            knownEntities.persons = data.persons || [];
+            knownEntities.vehicles = data.vehicles || [];
+            knownEntities.pets = data.pets || [];
+            knownPersonsList = knownEntities.persons;
+          } else {
+            const fRes = await fetch("/api/faces");
+            if (fRes.ok) {
+              const fData = await fRes.json();
+              knownEntities.persons = fData.known_persons || [];
+              knownPersonsList = knownEntities.persons;
+            }
           }
         } catch (e) {
-          console.warn("Erro ao buscar lista de moradores:", e);
+          console.warn("Erro ao buscar entidades cadastradas:", e);
         }
       }
 
@@ -1982,15 +2117,20 @@
         if (!container) return;
 
         try {
-          const res = await fetch("/api/faces/candidates?limit=12");
+          const res = await fetch(`/api/candidates?entity_type=${currentCandidateType}&limit=12`);
           if (!res.ok) return;
           const data = await res.json();
           const candidates = data.candidates || [];
 
           if (candidates.length === 0) {
+            let emptyMsg = "✅ Nenhuma detecção pendente no momento para esta categoria.";
+            if (currentCandidateType === "person") emptyMsg = "✅ Todos os rostos recentes foram identificados ou não há detecções pendentes no momento.";
+            else if (currentCandidateType === "vehicle") emptyMsg = "✅ Todos os veículos recentes foram identificados ou não há novos veículos pendentes.";
+            else if (currentCandidateType === "pet") emptyMsg = "✅ Todos os pets recentes foram identificados ou não há animais pendentes no momento.";
+
             container.innerHTML = `
               <div style="color: var(--text-dim); font-size: 0.8rem; padding: 14px 8px;">
-                ✅ Todos os rostos recentes foram identificados ou não há detecções pendentes no momento.
+                ${emptyMsg}
               </div>
             `;
             return;
@@ -2008,18 +2148,32 @@
             card.id = `training-card-${eventId}`;
 
             let chipsHtml = "";
-            const defaultPersons = knownPersonsList.length > 0 ? knownPersonsList : ["Karan", "Ingrid", "Ezequiel", "Sogra"];
-            defaultPersons.slice(0, 4).forEach(person => {
-              chipsHtml += `<button class="btn-enroll-chip" onclick="enrollFace('${eventId}', '${person}')">+ ${person}</button>`;
+            let currentList = [];
+            if (currentCandidateType === "vehicle") {
+              currentList = knownEntities.vehicles.length > 0 ? knownEntities.vehicles : ["Meu Carro", "Vizinho"];
+            } else if (currentCandidateType === "pet") {
+              currentList = knownEntities.pets.length > 0 ? knownEntities.pets : ["Thor", "Felix"];
+            } else {
+              currentList = knownEntities.persons.length > 0 ? knownEntities.persons : ["Karan", "Ingrid", "Ezequiel", "Sogra"];
+            }
+
+            currentList.slice(0, 4).forEach(item => {
+              chipsHtml += `<button class="btn-enroll-chip" onclick="enrollEntity('${eventId}', '${item}', '${currentCandidateType}', '${evt.license_plate || ''}')">+ ${item}</button>`;
             });
-            chipsHtml += `<button class="btn-enroll-chip custom" onclick="openClassifyModal('${eventId}', '${cropUrl}', '${evt.person_name}')">+ Outro</button>`;
+            chipsHtml += `<button class="btn-enroll-chip custom" onclick="openClassifyModal('${eventId}', '${cropUrl}', '${evt.person_name || ''}', '${currentCandidateType}', '${evt.license_plate || ''}')">+ Outro</button>`;
+
+            let plateBadge = "";
+            if (evt.license_plate) {
+              plateBadge = `<div class="badge-plate-mercosul" style="transform: scale(0.85); margin-top: 4px;"><span class="plate-top">BRASIL</span><span class="plate-code">${evt.license_plate}</span></div>`;
+            }
 
             card.innerHTML = `
               <img src="${cropUrl}" class="training-crop-img" alt="Candidato" title="Clique para inspecionar cena completa"
-                   onclick="openForensicModal('${eventId}', '${evt.person_name}', '${evt.camera_name}', '${timeStr}', '${Math.round((evt.confidence || 0) * 100)}%', '')">
+                   onclick="openForensicModal('${eventId}', '${evt.person_name}', '${evt.camera_name}', '${timeStr}', '${Math.round((evt.confidence || 0) * 100)}%', '${evt.license_plate || ''}', '${currentCandidateType}')">
               <div class="training-meta">
                 <strong>${evt.camera_name || "Câmera"}</strong>
                 <span>${timeStr}</span>
+                ${plateBadge}
               </div>
               <div class="training-actions">
                 ${chipsHtml}
@@ -2032,17 +2186,22 @@
         }
       }
 
-      window.enrollFace = async function(eventId, personName) {
-        if (!eventId || !personName) return;
+      window.enrollEntity = async function(eventId, entityName, entityType, licensePlate) {
+        if (!eventId || !entityName) return;
+        const entType = entityType || "person";
         try {
-          const res = await fetch("/api/faces/classify-event", {
+          const res = await fetch("/api/entities/classify-event", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ event_id: eventId, person_name: personName })
+            body: JSON.stringify({
+              event_id: eventId,
+              entity_name: entityName,
+              entity_type: entType,
+              license_plate: licensePlate || null
+            })
           });
           const result = await res.json();
           if (res.ok) {
-            // Anima e remove card
             const card = document.getElementById(`training-card-${eventId}`);
             if (card) {
               card.style.transform = "scale(0.8)";
@@ -2051,39 +2210,83 @@
             }
 
             alert(`✅ ${result.message}\nA IA aprendeu com a foto real da câmera!`);
-            
-            // Recarrega lista de conhecidos, dashboard, tabela e candidatos
-            await loadKnownPersons();
+
+            await loadKnownEntities();
             loadDashboard();
             loadEventsTable();
             loadTrainingCandidates();
           } else {
-            alert(`Erro: ${result.detail || "Falha ao classificar rosto"}`);
+            alert(`Erro: ${result.detail || "Falha ao classificar entidade"}`);
           }
         } catch (e) {
           alert("Erro de comunicação ao classificar: " + e);
         }
       };
 
-      window.openClassifyModal = function(eventId, cropUrl, currentName) {
+      window.enrollFace = function(eventId, personName) {
+        return enrollEntity(eventId, personName, "person");
+      };
+
+      window.openClassifyModal = function(eventId, cropUrl, currentName, entityType, currentPlate) {
         pendingClassifyEventId = eventId;
+        pendingClassifyEntityType = entityType || "person";
+
         const modal = document.getElementById("modal-classify");
         const cropImg = document.getElementById("classify-crop-img");
         const chipsContainer = document.getElementById("modal-classify-known-chips");
         const input = document.getElementById("classify-custom-input");
+        const icon = document.getElementById("classify-modal-icon");
+        const title = document.getElementById("classify-modal-title");
+        const knownLabel = document.getElementById("classify-known-label");
+        const customLabel = document.getElementById("classify-custom-label");
+        const plateContainer = document.getElementById("classify-plate-container");
+        const plateInput = document.getElementById("classify-plate-input");
 
         cropImg.src = cropUrl;
         input.value = "";
+        if (plateInput) plateInput.value = currentPlate || "";
+
+        if (pendingClassifyEntityType === "vehicle") {
+          if (icon) icon.textContent = "🚗";
+          if (title) title.textContent = "Classificar Veículo";
+          if (knownLabel) knownLabel.textContent = "Selecione um veículo cadastrado:";
+          if (customLabel) customLabel.textContent = "Ou digite o nome / modelo do veículo:";
+          input.placeholder = "Ex: Meu Civic, Ranger Prata, Vizinho...";
+          if (plateContainer) plateContainer.style.display = "flex";
+        } else if (pendingClassifyEntityType === "pet") {
+          if (icon) icon.textContent = "🐾";
+          if (title) title.textContent = "Classificar Pet";
+          if (knownLabel) knownLabel.textContent = "Selecione um animal cadastrado:";
+          if (customLabel) customLabel.textContent = "Ou digite o nome do pet:";
+          input.placeholder = "Ex: Thor, Felix, Rex...";
+          if (plateContainer) plateContainer.style.display = "none";
+        } else {
+          if (icon) icon.textContent = "👤";
+          if (title) title.textContent = "Classificar Morador";
+          if (knownLabel) knownLabel.textContent = "Selecione um morador conhecido:";
+          if (customLabel) customLabel.textContent = "Ou digite o nome de um novo morador:";
+          input.placeholder = "Ex: Karan, Ingrid, Visitante...";
+          if (plateContainer) plateContainer.style.display = "none";
+        }
 
         chipsContainer.innerHTML = "";
-        const personsToDisplay = knownPersonsList.length > 0 ? knownPersonsList : ["Karan", "Ingrid", "Ezequiel", "Sogra"];
-        personsToDisplay.forEach(p => {
+        let displayList = [];
+        if (pendingClassifyEntityType === "vehicle") {
+          displayList = knownEntities.vehicles.length > 0 ? knownEntities.vehicles : ["Meu Carro", "Vizinho"];
+        } else if (pendingClassifyEntityType === "pet") {
+          displayList = knownEntities.pets.length > 0 ? knownEntities.pets : ["Thor", "Felix"];
+        } else {
+          displayList = knownEntities.persons.length > 0 ? knownEntities.persons : ["Karan", "Ingrid", "Ezequiel", "Sogra"];
+        }
+
+        displayList.forEach(item => {
           const btn = document.createElement("button");
           btn.className = "btn-enroll-chip";
-          btn.textContent = `+ ${p}`;
+          btn.textContent = `+ ${item}`;
           btn.onclick = () => {
             modal.classList.remove("active");
-            enrollFace(pendingClassifyEventId, p);
+            const plateVal = plateInput ? plateInput.value.trim() : "";
+            enrollEntity(pendingClassifyEventId, item, pendingClassifyEntityType, plateVal || currentPlate);
           };
           chipsContainer.appendChild(btn);
         });
@@ -2100,11 +2303,35 @@
         const input = document.getElementById("classify-custom-input");
         const name = (input.value || "").trim();
         if (!name) {
-          alert("Por favor, informe o nome do morador.");
+          alert("Por favor, informe o nome para cadastro.");
           return;
         }
+        const plateInput = document.getElementById("classify-plate-input");
+        const plateVal = plateInput ? plateInput.value.trim() : "";
         document.getElementById("modal-classify").classList.remove("active");
-        enrollFace(pendingClassifyEventId, name);
+        enrollEntity(pendingClassifyEventId, name, pendingClassifyEntityType, plateVal);
+      });
+
+      // Abas de Candidatos no Painel Superior
+      document.querySelectorAll(".cand-tab-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          document.querySelectorAll(".cand-tab-btn").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          currentCandidateType = btn.dataset.cand;
+
+          const subtitle = document.getElementById("training-subtitle");
+          if (subtitle) {
+            if (currentCandidateType === "vehicle") {
+              subtitle.textContent = "Veículos recentes detectados sem identificação definitiva. Atribua o veículo correspondente ou cadastre uma nova placa:";
+            } else if (currentCandidateType === "pet") {
+              subtitle.textContent = "Animais de estimação recentes sem identificação. Clique no pet correspondente para associar:";
+            } else {
+              subtitle.textContent = "Pessoas recentes detectadas sem identificação definitiva. Clique no morador correspondente para salvar o snapshot real da câmera na biometria:";
+            }
+          }
+
+          loadTrainingCandidates();
+        });
       });
 
       // Busca Instantânea
@@ -2147,7 +2374,14 @@
       const modalFullLoader = document.getElementById("modal-full-loader");
       const modalFullRawLink = document.getElementById("modal-full-raw-link");
 
-      window.openForensicModal = function(id, name, camera, time, conf, plate) {
+      // Modal Forense
+      const modalCropImg = document.getElementById("modal-crop");
+      const modalFullImg = document.getElementById("modal-full");
+      const modalCropLoader = document.getElementById("modal-crop-loader");
+      const modalFullLoader = document.getElementById("modal-full-loader");
+      const modalFullRawLink = document.getElementById("modal-full-raw-link");
+
+      window.openForensicModal = function(id, name, camera, time, conf, plate, entityType) {
         document.getElementById("modal-name").textContent = `Evidência: ${name}`;
         document.getElementById("modal-camera").textContent = camera;
         document.getElementById("modal-time").textContent = time;
@@ -2156,14 +2390,19 @@
           modalFullRawLink.href = `/api/events/${id}/full?raw=true`;
         }
 
+        const entType = entityType || "person";
+        let btnLabel = "🏷️ Cadastrar Face como Morador";
+        if (entType === "vehicle") btnLabel = "🚗 Cadastrar Veículo";
+        else if (entType === "pet") btnLabel = "🐾 Cadastrar Pet";
+
         // Metadados no rodapé do modal
         const metaStrip = document.getElementById("modal-meta");
         metaStrip.innerHTML = `
           <span>ID do Evento: <strong>${id}</strong></span>
           <span>Confiança: <strong>${conf}</strong></span>
           ${plate ? `<span>Placa: <strong>${plate}</strong></span>` : ''}
-          <button class="btn-table-classify" style="margin-left: auto;" onclick="openClassifyModal('${id}', '/api/events/${id}/crop', '${name}')">
-            🏷️ Cadastrar Face como Morador
+          <button class="btn-table-classify" style="margin-left: auto;" onclick="openClassifyModal('${id}', '/api/events/${id}/crop', '${name}', '${entType}', '${plate || ''}')">
+            ${btnLabel}
           </button>
         `;
 
@@ -2213,17 +2452,183 @@
         }
       });
 
+      // Gerenciamento do Modal de Cadastro Manual Direto por Fotos
+      const modalManual = document.getElementById("modal-manual-upload");
+      const btnOpenManual = document.getElementById("btn-open-manual-upload");
+      const btnManualClose = document.getElementById("modal-manual-close");
+      const btnManualCancel = document.getElementById("btn-manual-cancel");
+      const dropzone = document.getElementById("manual-dropzone");
+      const fileInput = document.getElementById("manual-file-input");
+      const previewsContainer = document.getElementById("manual-previews");
+      const manualNameInput = document.getElementById("manual-name-input");
+      const manualPlateInput = document.getElementById("manual-plate-input");
+      const manualPlateContainer = document.getElementById("manual-plate-container");
+      const manualNameLabel = document.getElementById("manual-name-label");
+      const btnManualSubmit = document.getElementById("btn-manual-submit");
+
+      function resetManualForm() {
+        manualSelectedFiles = [];
+        if (fileInput) fileInput.value = "";
+        if (manualNameInput) manualNameInput.value = "";
+        if (manualPlateInput) manualPlateInput.value = "";
+        if (previewsContainer) {
+          previewsContainer.innerHTML = "";
+          previewsContainer.style.display = "none";
+        }
+      }
+
+      function updateManualPreviews() {
+        if (!previewsContainer) return;
+        previewsContainer.innerHTML = "";
+        if (manualSelectedFiles.length === 0) {
+          previewsContainer.style.display = "none";
+          return;
+        }
+        previewsContainer.style.display = "flex";
+        manualSelectedFiles.forEach(file => {
+          const img = document.createElement("img");
+          img.className = "upload-preview-thumb";
+          img.src = URL.createObjectURL(file);
+          img.title = file.name;
+          previewsContainer.appendChild(img);
+        });
+      }
+
+      if (btnOpenManual) {
+        btnOpenManual.addEventListener("click", () => {
+          resetManualForm();
+          modalManual.classList.add("active");
+        });
+      }
+
+      function closeManualModal() {
+        if (modalManual) modalManual.classList.remove("active");
+        resetManualForm();
+      }
+
+      if (btnManualClose) btnManualClose.addEventListener("click", closeManualModal);
+      if (btnManualCancel) btnManualCancel.addEventListener("click", closeManualModal);
+      if (modalManual) {
+        modalManual.addEventListener("click", (e) => {
+          if (e.target.id === "modal-manual-upload") closeManualModal();
+        });
+      }
+
+      // Seletor de Categoria no Modal Manual
+      document.querySelectorAll(".manual-type-tab").forEach(tab => {
+        tab.addEventListener("click", () => {
+          document.querySelectorAll(".manual-type-tab").forEach(t => t.classList.remove("active"));
+          tab.classList.add("active");
+          manualSelectedType = tab.dataset.type || "person";
+
+          if (manualSelectedType === "vehicle") {
+            if (manualNameLabel) manualNameLabel.textContent = "Nome / Modelo do Veículo:";
+            if (manualNameInput) manualNameInput.placeholder = "Ex: Meu Civic, Ranger Prata...";
+            if (manualPlateContainer) manualPlateContainer.style.display = "block";
+          } else if (manualSelectedType === "pet") {
+            if (manualNameLabel) manualNameLabel.textContent = "Nome do Animal (Pet):";
+            if (manualNameInput) manualNameInput.placeholder = "Ex: Thor, Felix, Rex...";
+            if (manualPlateContainer) manualPlateContainer.style.display = "none";
+          } else {
+            if (manualNameLabel) manualNameLabel.textContent = "Nome do Morador:";
+            if (manualNameInput) manualNameInput.placeholder = "Ex: Karan, Ingrid...";
+            if (manualPlateContainer) manualPlateContainer.style.display = "none";
+          }
+        });
+      });
+
+      // Drag & Drop no Dropzone
+      if (dropzone && fileInput) {
+        dropzone.addEventListener("click", () => fileInput.click());
+        dropzone.addEventListener("dragover", (e) => {
+          e.preventDefault();
+          dropzone.classList.add("dragover");
+        });
+        dropzone.addEventListener("dragleave", () => {
+          dropzone.classList.remove("dragover");
+        });
+        dropzone.addEventListener("drop", (e) => {
+          e.preventDefault();
+          dropzone.classList.remove("dragover");
+          if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            manualSelectedFiles = Array.from(e.dataTransfer.files);
+            updateManualPreviews();
+          }
+        });
+        fileInput.addEventListener("change", () => {
+          if (fileInput.files && fileInput.files.length > 0) {
+            manualSelectedFiles = Array.from(fileInput.files);
+            updateManualPreviews();
+          }
+        });
+      }
+
+      // Envio do Formulário Manual
+      if (btnManualSubmit) {
+        btnManualSubmit.addEventListener("click", async () => {
+          const name = (manualNameInput.value || "").trim();
+          if (!name) {
+            alert("Por favor, informe o nome para cadastro.");
+            return;
+          }
+          if (manualSelectedFiles.length === 0) {
+            alert("Por favor, selecione ao menos uma foto de referência.");
+            return;
+          }
+
+          const originalText = btnManualSubmit.textContent;
+          btnManualSubmit.textContent = "Enviando e Sincronizando...";
+          btnManualSubmit.disabled = true;
+
+          try {
+            const formData = new FormData();
+            formData.append("entity_type", manualSelectedType);
+            formData.append("entity_name", name);
+            if (manualSelectedType === "vehicle" && manualPlateInput && manualPlateInput.value.trim()) {
+              formData.append("license_plate", manualPlateInput.value.trim());
+            }
+            manualSelectedFiles.forEach(file => {
+              formData.append("files", file);
+            });
+
+            const res = await fetch("/api/entities/upload", {
+              method: "POST",
+              body: formData
+            });
+            const data = await res.json();
+
+            if (res.ok) {
+              alert(`✅ ${data.message || "Cadastro realizado com sucesso!"}\nOs modelos de IA foram atualizados na GPU.`);
+              closeManualModal();
+              await loadKnownEntities();
+              loadDashboard();
+              loadEventsTable();
+              loadTrainingCandidates();
+            } else {
+              alert(`Erro: ${data.detail || "Falha ao enviar fotos"}`);
+            }
+          } catch (err) {
+            alert("Erro de comunicação ao enviar fotos: " + err);
+          } finally {
+            btnManualSubmit.textContent = originalText;
+            btnManualSubmit.disabled = false;
+          }
+        });
+      }
+
       // Ações do Header (Sincronizar e Limpar)
       document.getElementById("btn-sync-entities").addEventListener("click", async () => {
         const btn = document.getElementById("btn-sync-entities");
         const originalHtml = btn.innerHTML;
         btn.textContent = "Sincronizando...";
         try {
-          const res = await fetch("/api/faces/reload", { method: "POST" });
+          const res = await fetch("/api/entities/reload", { method: "POST" });
           const data = await res.json();
           alert(`Sincronização concluída com sucesso!\n\n👤 Pessoas cadastradas: ${data.persons_loaded}\n🚗 Veículos cadastrados: ${data.vehicles_loaded}\n🐾 Pets cadastrados: ${data.pets_loaded}`);
+          await loadKnownEntities();
           loadDashboard();
           loadEventsTable();
+          loadTrainingCandidates();
         } catch (err) {
           alert("Erro ao sincronizar cadastros.");
         } finally {
@@ -2260,7 +2665,7 @@
 
       // Inicialização
       async function initDashboard() {
-        await loadKnownPersons();
+        await loadKnownEntities();
         loadHeaderTelemetry();
         loadDashboard();
         loadEventsTable();
