@@ -1,11 +1,12 @@
 import os
+import re
 import time
 import json
 import urllib.request
 import urllib.error
 from pathlib import Path
-from typing import Optional
-from fastapi import APIRouter, HTTPException, Query, Request, Response
+from typing import Optional, List, Dict, Any
+from fastapi import APIRouter, HTTPException, Query, Request, Response, Form, File, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
@@ -399,6 +400,13 @@ async def get_analytics():
     return await db.get_analytics_data()
 
 
+def sanitize_entity_name(name: str) -> str:
+    """Higieniza o nome da entidade para ser usado com segurança como nome de diretório."""
+    clean = re.sub(r'[\\/*?:"<>|]', "", name).strip()
+    clean = re.sub(r'\s+', " ", clean).strip(". ")
+    return clean
+
+
 @router.get("/faces")
 async def get_known_faces():
     """Lista as pessoas atualmente cadastradas no módulo de reconhecimento facial."""
@@ -409,20 +417,49 @@ async def get_known_faces():
     }
 
 
+@router.get("/entities/known")
+async def get_all_known_entities():
+    """Retorna inventário completo consolidado de pessoas, veículos e pets cadastrados."""
+    from app.detector.recognizer import face_recognizer
+    from app.detector.visual_matcher import visual_matcher
+
+    persons = list(face_recognizer.known_gallery.keys()) or list(face_recognizer.known_embeddings.keys())
+    vehicles = list(visual_matcher.known_vehicles.keys())
+    pets = list(visual_matcher.known_pets.keys())
+
+    return {
+        "persons": sorted(persons),
+        "vehicles": sorted(vehicles),
+        "pets": sorted(pets)
+    }
+
+
 class ClassifyEventRequest(BaseModel):
     event_id: str
-    person_name: str
+    person_name: Optional[str] = None
+    entity_name: Optional[str] = None
+    entity_type: str = "person"  # "person", "vehicle", "pet"
+    license_plate: Optional[str] = None
 
 
+ClassifyEntityRequest = ClassifyEventRequest
+
+
+@router.post("/entities/classify-event")
 @router.post("/faces/classify-event")
-async def classify_event(payload: ClassifyEventRequest):
+async def classify_entity_event(payload: ClassifyEventRequest):
     """
-    Cadastra uma evidência/crop de rosto diretamente no perfil do morador,
-    alimentando a galeria biométrica com a foto real capturada pelas câmeras.
+    Cadastra uma evidência/crop diretamente no perfil de um morador, veículo ou pet,
+    alimentando a galeria de referência com a foto real capturada pelas câmeras.
     """
-    clean_name = payload.person_name.strip()
-    if not clean_name or clean_name.lower() in ["desconhecido", "unknown", "none"]:
-        raise HTTPException(status_code=400, detail="Nome de morador inválido")
+    raw_name = (payload.entity_name or payload.person_name or "").strip()
+    clean_name = sanitize_entity_name(raw_name)
+    if not clean_name or clean_name.lower() in ["desconhecido", "unknown", "none", "null"]:
+        raise HTTPException(status_code=400, detail="Nome de entidade inválido")
+
+    ent_type = (payload.entity_type or "person").lower().strip()
+    if ent_type not in ["person", "vehicle", "pet"]:
+        ent_type = "person"
 
     event = await db.get_event_by_id(payload.event_id)
     if not event:
@@ -434,42 +471,202 @@ async def classify_event(payload: ClassifyEventRequest):
         if not crop_path.exists():
             raise HTTPException(status_code=404, detail="Arquivo de evidência não encontrado no disco")
 
-    # Garante a pasta do morador em data/known_faces
-    target_dir = Path("data/known_faces") / clean_name
+    import shutil
+
+    if ent_type == "vehicle":
+        clean_plate = None
+        if payload.license_plate:
+            clean_plate = re.sub(r"[^A-Za-z0-9]", "", payload.license_plate).upper()
+        elif event.get("license_plate"):
+            clean_plate = re.sub(r"[^A-Za-z0-9]", "", event.get("license_plate")).upper()
+
+        folder_name = f"{clean_name}_[{clean_plate}]" if clean_plate else clean_name
+        target_dir = Path("data/known_vehicles") / folder_name
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        dest_filename = f"cctv_veh_{payload.event_id[:8]}_{int(time.time())}.jpg"
+        dest_path = target_dir / dest_filename
+        shutil.copyfile(crop_path, dest_path)
+
+        update_fields = {
+            "person_name": clean_name,
+            "is_known": 1
+        }
+        if clean_plate:
+            update_fields["license_plate"] = clean_plate
+        await db.update_event(payload.event_id, update_fields)
+
+        from app.detector.visual_matcher import visual_matcher
+        v_count = visual_matcher.load_vehicles()
+
+        return {
+            "status": "success",
+            "message": f"Veículo '{clean_name}' cadastrado com sucesso!",
+            "entity_type": "vehicle",
+            "entity_name": clean_name,
+            "license_plate": clean_plate,
+            "saved_path": str(dest_path),
+            "vehicles_loaded": v_count
+        }
+
+    elif ent_type == "pet":
+        target_dir = Path("data/known_pets") / clean_name
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        dest_filename = f"cctv_pet_{payload.event_id[:8]}_{int(time.time())}.jpg"
+        dest_path = target_dir / dest_filename
+        shutil.copyfile(crop_path, dest_path)
+
+        await db.update_event(payload.event_id, {
+            "person_name": clean_name,
+            "is_known": 1
+        })
+
+        from app.detector.visual_matcher import visual_matcher
+        pet_count = visual_matcher.load_pets()
+
+        return {
+            "status": "success",
+            "message": f"Pet '{clean_name}' cadastrado com sucesso!",
+            "entity_type": "pet",
+            "entity_name": clean_name,
+            "saved_path": str(dest_path),
+            "pets_loaded": pet_count
+        }
+
+    else:  # person
+        target_dir = Path("data/known_faces") / clean_name
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        dest_filename = f"cctv_{payload.event_id[:8]}_{int(time.time())}.jpg"
+        dest_path = target_dir / dest_filename
+        shutil.copyfile(crop_path, dest_path)
+
+        await db.update_event(payload.event_id, {
+            "person_name": clean_name,
+            "is_known": 1
+        })
+
+        from app.detector.recognizer import face_recognizer
+        face_recognizer.load_known_faces()
+
+        return {
+            "status": "success",
+            "message": f"Evidência cadastrada com sucesso para '{clean_name}'!",
+            "entity_type": "person",
+            "person_name": clean_name,
+            "saved_path": str(dest_path),
+            "total_gallery_vectors": face_recognizer.gallery_vector_count
+        }
+
+
+@router.get("/candidates")
+@router.get("/faces/candidates")
+async def get_training_candidates(entity_type: str = "person", limit: int = 12):
+    """Retorna os eventos mais recentes não identificados para classificação rápida por categoria."""
+    valid_type = entity_type.lower().strip()
+    if valid_type not in ["person", "vehicle", "pet"]:
+        valid_type = "person"
+    events = await db.get_recent_events(limit=limit, is_known=False, entity_type=valid_type)
+    return {"candidates": events, "entity_type": valid_type}
+
+
+@router.post("/entities/upload")
+async def upload_entity_photos(
+    entity_type: str = Form(...),
+    entity_name: str = Form(...),
+    license_plate: Optional[str] = Form(None),
+    files: List[UploadFile] = File(...)
+):
+    """
+    Cadastra uma nova pessoa, veículo ou pet diretamente via upload de fotos externas.
+    Salva as fotos nas pastas correspondentes e recarrega os embeddings em GPU/RAM imediatamente.
+    """
+    raw_name = entity_name.strip()
+    clean_name = sanitize_entity_name(raw_name)
+    if not clean_name or clean_name.lower() in ["desconhecido", "unknown", "none", "null"]:
+        raise HTTPException(status_code=400, detail="Nome de entidade inválido")
+
+    ent_type = entity_type.lower().strip()
+    if ent_type not in ["person", "vehicle", "pet"]:
+        raise HTTPException(status_code=400, detail="Tipo de entidade inválido. Use 'person', 'vehicle' ou 'pet'")
+
+    if not files:
+        raise HTTPException(status_code=400, detail="Nenhuma foto enviada")
+
+    clean_plate = None
+    if ent_type == "vehicle":
+        if license_plate:
+            clean_plate = re.sub(r"[^A-Za-z0-9]", "", license_plate).upper()
+        folder_name = f"{clean_name}_[{clean_plate}]" if clean_plate else clean_name
+        target_dir = Path("data/known_vehicles") / folder_name
+    elif ent_type == "pet":
+        target_dir = Path("data/known_pets") / clean_name
+    else:
+        target_dir = Path("data/known_faces") / clean_name
+
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    # Copia a foto para a galeria do morador
-    import shutil
-    dest_filename = f"cctv_{payload.event_id[:8]}_{int(time.time())}.jpg"
-    dest_path = target_dir / dest_filename
-    shutil.copyfile(crop_path, dest_path)
+    saved_files = []
+    allowed_extensions = {".jpg", ".jpeg", ".png", ".webp"}
 
-    # Atualiza o histórico do evento no SQLite
-    await db.update_event(payload.event_id, {
-        "person_name": clean_name,
-        "is_known": 1
-    })
+    ts = int(time.time())
+    for idx, f in enumerate(files):
+        orig_ext = Path(f.filename or "image.jpg").suffix.lower()
+        if orig_ext not in allowed_extensions:
+            orig_ext = ".jpg"
 
-    # Recarrega a galeria biométrica instantaneamente
-    from app.detector.recognizer import face_recognizer
-    face_recognizer.load_known_faces()
+        dest_name = f"upload_{ts}_{idx+1}{orig_ext}"
+        dest_path = target_dir / dest_name
 
-    return {
-        "status": "success",
-        "message": f"Evidência cadastrada com sucesso para '{clean_name}'!",
-        "person_name": clean_name,
-        "saved_path": str(dest_path),
-        "total_gallery_vectors": face_recognizer.gallery_vector_count
-    }
+        content = await f.read()
+        if len(content) == 0:
+            continue
+
+        with open(dest_path, "wb") as out_file:
+            out_file.write(content)
+        saved_files.append(str(dest_path))
+
+    if not saved_files:
+        raise HTTPException(status_code=400, detail="Nenhum arquivo válido pôde ser salvo")
+
+    if ent_type == "vehicle":
+        from app.detector.visual_matcher import visual_matcher
+        v_count = visual_matcher.load_vehicles()
+        return {
+            "status": "success",
+            "message": f"Veículo '{clean_name}' cadastrado com {len(saved_files)} foto(s)!",
+            "entity_type": "vehicle",
+            "entity_name": clean_name,
+            "license_plate": clean_plate,
+            "saved_count": len(saved_files),
+            "vehicles_loaded": v_count
+        }
+    elif ent_type == "pet":
+        from app.detector.visual_matcher import visual_matcher
+        pet_count = visual_matcher.load_pets()
+        return {
+            "status": "success",
+            "message": f"Pet '{clean_name}' cadastrado com {len(saved_files)} foto(s)!",
+            "entity_type": "pet",
+            "entity_name": clean_name,
+            "saved_count": len(saved_files),
+            "pets_loaded": pet_count
+        }
+    else:
+        from app.detector.recognizer import face_recognizer
+        face_recognizer.load_known_faces()
+        return {
+            "status": "success",
+            "message": f"Morador '{clean_name}' cadastrado com {len(saved_files)} foto(s)!",
+            "entity_type": "person",
+            "person_name": clean_name,
+            "saved_count": len(saved_files),
+            "total_gallery_vectors": face_recognizer.gallery_vector_count
+        }
 
 
-@router.get("/faces/candidates")
-async def get_face_training_candidates(limit: int = 12):
-    """Retorna os eventos mais recentes de pessoas não identificadas para classificação rápida no dashboard."""
-    events = await db.get_recent_events(limit=limit, is_known=False, entity_type="person")
-    return {"candidates": events}
-
-
+@router.post("/entities/reload")
 @router.post("/faces/reload")
 async def reload_known_entities():
     """Recarrega todas as fotos e placas de pessoas, veículos e pets sem reiniciar o servidor."""
