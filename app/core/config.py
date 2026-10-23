@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     vehicle_similarity_threshold: float = Field(default=0.82, alias="VEHICLE_SIMILARITY_THRESHOLD")
     pet_similarity_threshold: float = Field(default=0.78, alias="PET_SIMILARITY_THRESHOLD")
 
+    # Motion Gating Adaptativo (Estilo Frigate - Economia de GPU)
+    motion_gating_enabled: bool = Field(default=True, alias="MOTION_GATING_ENABLED")
+    motion_min_area: float = Field(default=0.005, alias="MOTION_MIN_AREA")
+    motion_grace_period: float = Field(default=3.0, alias="MOTION_GRACE_PERIOD")
+
     # Parâmetros SOTA de Reconhecimento Facial (InsightFace ArcFace / SCRFD)
     face_model_name: str = Field(default="buffalo_l", alias="FACE_MODEL_NAME")
     face_det_thresh: float = Field(default=0.22, alias="FACE_DET_THRESH")
