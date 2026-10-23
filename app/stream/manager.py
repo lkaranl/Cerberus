@@ -433,6 +433,7 @@ class StreamManager:
             stream_fps = self.stream_fps.get(cam.id, 0.0)
             inf_fps = self.inference_fps.get(cam.id, 0.0)
             res = capture.resolution if capture else (0, 0)
+            telem = self.latest_telemetry.get(cam.id) or {}
 
             statuses.append({
                 "id": cam.id,
@@ -446,7 +447,10 @@ class StreamManager:
                 "stream_fps": stream_fps,
                 "inference_fps": inf_fps,
                 "resolution": f"{res[0]}x{res[1]}" if res[0] > 0 else "N/A",
-                "nvdec_active": getattr(capture, "is_nvdec_active", False) if capture else False
+                "nvdec_active": getattr(capture, "is_nvdec_active", False) if capture else False,
+                "motion_active": telem.get("motion_active", False),
+                "motion_gated": telem.get("motion_gated", False),
+                "motion_ratio": telem.get("motion_ratio", 0.0)
             })
         return statuses
 

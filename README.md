@@ -60,6 +60,9 @@ As configurações podem ser definidas via `.env` ou variáveis de ambiente:
 | `DATA_DIR` | `data` | Diretório de armazenamento de dados e eventos |
 | `CONFIDENCE_THRESHOLD` | `0.65` | Limiar mínimo de confiança para detecção |
 | `IOU_THRESHOLD` | `0.45` | Limiar de Non-Maximum Suppression (NMS) |
+| `MOTION_GATING_ENABLED` | `true` | Ativa filtro pré-IA (Motion Gating estilo Frigate) |
+| `MOTION_MIN_AREA` | `0.005` | Limiar mínimo de área (0.5%) com movimento para acionar a IA |
+| `MOTION_GRACE_PERIOD` | `3.0` | Período de tolerância (segundos) mantendo a IA ativa após movimento |
 
 ---
 
