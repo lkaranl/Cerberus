@@ -46,3 +46,14 @@ def test_routes_registered():
     assert "/api/entities/classify-event" in route_paths
     assert "/api/faces/classify-event" in route_paths
     assert "/api/entities/upload" in route_paths
+
+if __name__ == "__main__":
+    print("🧪 Executando suíte de testes de registro de entidades...")
+    test_sanitize_entity_name()
+    print("  ✓ test_sanitize_entity_name: OK")
+    test_classify_entity_request_model()
+    print("  ✓ test_classify_entity_request_model: OK")
+    test_routes_registered()
+    print("  ✓ test_routes_registered: OK")
+    print("\n🎉 Todos os testes passaram com 100% de sucesso!")
+
