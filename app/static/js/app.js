@@ -654,17 +654,19 @@ document.addEventListener("DOMContentLoaded", () => {
       item.innerHTML = `
         <div class="radar-thumb-wrap radar-thumb-standby">
           <span class="standby-cam-icon">📹</span>
+          <span class="radar-cam-tag">${slotDef.sublabel}</span>
         </div>
         <div class="radar-item-content">
-          <div class="radar-card-top">
+          <div class="radar-card-header-row">
             <span class="radar-item-badge standby">MONITORANDO</span>
+            <span class="radar-item-time mono">--:--</span>
           </div>
-          <div class="radar-item-cam-row">
+          <div class="radar-card-body-row">
+            <span class="radar-item-name standby-name">Perímetro Tranquilo</span>
+          </div>
+          <div class="radar-card-footer-row">
             <span class="radar-cam-dot standby"></span>
-            <span class="radar-item-camera-label">${slotDef.sublabel}</span>
-          </div>
-          <div class="radar-card-bottom">
-            <span class="radar-standby-txt">Sem atividade</span>
+            <span class="radar-item-ago">Nenhuma atividade recente</span>
           </div>
         </div>
       `;
@@ -698,19 +700,19 @@ document.addEventListener("DOMContentLoaded", () => {
     item.innerHTML = `
       <div class="radar-thumb-wrap">
         <img class="radar-item-thumb" src="${cropUrl}" alt="Evidência" loading="lazy" onerror="this.src='/static/img/placeholder.png'">
+        <span class="radar-cam-tag">${camDisplay}</span>
       </div>
       <div class="radar-item-content">
-        <div class="radar-card-top">
+        <div class="radar-card-header-row">
           <span class="radar-item-badge ${badgeClass}">${badgeText}</span>
-          ${primaryTitle ? `<span class="radar-item-name" title="${primaryTitle}">${primaryTitle}</span>` : ""}
-        </div>
-        <div class="radar-item-cam-row">
-          <span class="radar-cam-dot"></span>
-          <span class="radar-item-camera-label">${camDisplay}</span>
-        </div>
-        <div class="radar-card-bottom">
           <span class="radar-item-time mono">${timeFormatted}</span>
-          ${timeAgo ? `<span class="radar-item-ago">${timeAgo}</span>` : ""}
+        </div>
+        <div class="radar-card-body-row">
+          <span class="radar-item-name" title="${primaryTitle || badgeText}">${primaryTitle || "Pessoa Detectada"}</span>
+        </div>
+        <div class="radar-card-footer-row">
+          <span class="radar-status-dot-pulse"></span>
+          <span class="radar-item-ago">${timeAgo || "agora"}</span>
         </div>
       </div>
     `;
