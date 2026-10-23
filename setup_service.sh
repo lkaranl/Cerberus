@@ -48,8 +48,8 @@ TEMP_WORKER_SERVICE="$(mktemp)"
 cat <<EOF > "$TEMP_SERVICE"
 [Unit]
 Description=Cerberus (Sentinela Vision) - Servico de Monitoramento e IA 24/7
-After=network-online.target cerberus-worker-amd.service
-Wants=network-online.target cerberus-worker-amd.service
+After=network-online.target cerberus-worker-amd.service go2rtc.service
+Wants=network-online.target cerberus-worker-amd.service go2rtc.service
 
 [Service]
 Type=simple
@@ -160,12 +160,15 @@ if systemctl is-active --quiet cerberus; then
     echo -e "🌐 Acesse no navegador:"
     echo -e "   • Monitoramento: ${CYAN}http://${SERVER_IP}:8095${NC}"
     echo -e "   • Dashboard:     ${CYAN}http://${SERVER_IP}:8095/dashboard${NC}"
-    echo -e "   • Worker AMD:    ${CYAN}http://127.0.0.1:8001/health${NC}\n"
+    echo -e "   • Worker AMD:    ${CYAN}http://127.0.0.1:8001/health${NC}"
+    echo -e "   • Gateway go2rtc:${CYAN}http://${SERVER_IP}:1984${NC}\n"
     echo -e "📜 Comandos úteis:"
     echo -e "   • Status Cerberus:   systemctl status cerberus"
     echo -e "   • Status Worker AMD: systemctl status cerberus-worker-amd"
+    echo -e "   • Status go2rtc:     systemctl status go2rtc"
     echo -e "   • Logs Cerberus:     journalctl -u cerberus -f"
-    echo -e "   • Logs Worker AMD:   journalctl -u cerberus-worker-amd -f\n"
+    echo -e "   • Logs Worker AMD:   journalctl -u cerberus-worker-amd -f"
+    echo -e "   • Logs go2rtc:       journalctl -u go2rtc -f\n"
 else
     echo -e "\n${RED}======================================================${NC}"
     echo -e "${RED}  ✗ O serviço falhou ao iniciar. Verifique os logs:   ${NC}"
