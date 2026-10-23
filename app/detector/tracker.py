@@ -232,6 +232,14 @@ class CameraTrackerManager:
         # Fila de eventos recentes pendentes de rosto (quando a pessoa entrou de costas e aguarda virar de frente)
         self.pending_face_upgrades: List[Dict[str, Any]] = []
 
+    def has_active_tracks(self) -> bool:
+        """
+        Retorna True se houver entidades ativas sendo rastreadas na cena.
+        Utilizado pelo Motion Gating para não suspender a IA enquanto houver
+        pessoas, veículos ou animais no campo de visão.
+        """
+        return len(self.active_tracks) > 0
+
     def _calculate_iou(self, boxA: Tuple[int, int, int, int], boxB: Tuple[int, int, int, int]) -> float:
         """Calcula Intersection over Union (IoU) entre duas caixas delimitadoras."""
         xA = max(boxA[0], boxB[0])
