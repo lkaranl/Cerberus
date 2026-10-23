@@ -89,7 +89,11 @@ As configurações podem ser definidas via `.env` ou variáveis de ambiente:
 - `GET /api/stats`: Telemetria do sistema e uso de VRAM/hardware.
 - `GET /api/stats/analytics`: Dados estatísticos agregados para gráficos e relatórios.
 - `GET /api/faces`: Lista de pessoas conhecidas carregadas na memória.
-- `POST /api/faces/reload`: Recarrega fotos da pasta `data/known_faces/` sem reiniciar o servidor.
+- `GET /api/entities/known`: Inventário consolidado de pessoas, veículos e animais cadastrados.
+- `GET /api/candidates?entity_type={person|vehicle|pet}`: Candidatos recentes não identificados para auto-treinamento rápido.
+- `POST /api/entities/classify-event`: Classifica evento de CCTV como morador, veículo ou pet alimentando a IA.
+- `POST /api/entities/upload`: Cadastro direto de morador, veículo ou pet via upload de fotos externas.
+- `POST /api/entities/reload` (ou `POST /api/faces/reload`): Recarrega fotos e placas das pastas `data/known_*/` sem reiniciar o servidor.
 
 ### WebSockets
 - `WS /ws/stream/{camera_id}`: Stream contínuo de frames JPEG binários.
