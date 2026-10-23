@@ -11,6 +11,6 @@ def test_has_active_tracks_empty():
 
 def test_has_active_tracks_with_entity():
     manager = CameraTrackerManager("cam-test", "Camera Teste")
-    entity = TrackedEntity(track_id=1, class_id=0, class_name="person", bbox=(10, 10, 50, 100), confidence=0.85)
+    entity = TrackedEntity(tracking_id=1, entity_type="person", class_label="Pessoa")
     manager.active_tracks[1] = entity
     assert manager.has_active_tracks() is True
