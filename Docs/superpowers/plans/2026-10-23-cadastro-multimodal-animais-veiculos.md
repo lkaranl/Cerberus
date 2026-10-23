@@ -30,7 +30,7 @@
   - `GET /api/candidates?entity_type={person|vehicle|pet}&limit=12`
   - `GET /api/entities/known`
 
-- [ ] **Passo 1: Escrever testes unitários em `tests/test_entity_registration.py` para os endpoints de candidatos e lista de conhecidos**
+- [x] **Passo 1: Escrever testes unitários em `tests/test_entity_registration.py` para os endpoints de candidatos e lista de conhecidos**
 
 ```python
 import pytest
@@ -42,13 +42,13 @@ def test_api_candidates_structure():
     assert "/candidates" in routes or "/api/candidates" in routes
 ```
 
-- [ ] **Passo 2: Implementar suporte a filtro por `entity_type` em `database.py` se necessário**
+- [x] **Passo 2: Implementar suporte a filtro por `entity_type` em `database.py` se necessário**
 Verificar se `get_recent_events` em [database.py](file:///Users/karan/Github/Cerberus/app/storage/database.py) filtra adequadamente por `entity_type` para `person`, `vehicle` e `pet`.
 
-- [ ] **Passo 3: Adicionar `GET /api/candidates` e `GET /api/entities/known` em `routes.py`**
+- [x] **Passo 3: Adicionar `GET /api/candidates` e `GET /api/entities/known` em `routes.py`**
 Implementar o endpoint `/api/candidates` aceitando `entity_type: str = "person"`, e `/api/entities/known` consolidando `face_recognizer.known_gallery.keys()`, `visual_matcher.known_vehicles.keys()` e `visual_matcher.known_pets.keys()`.
 
-- [ ] **Passo 4: Commit das alterações**
+- [x] **Passo 4: Commit das alterações**
 ```bash
 git add app/api/routes.py app/storage/database.py tests/test_entity_registration.py
 git commit -m "feat(api): adiciona endpoints de candidatos por tipo e inventario consolidado de entidades"
@@ -66,7 +66,7 @@ git commit -m "feat(api): adiciona endpoints de candidatos por tipo e inventario
 - Consumes: `db.get_event_by_id`, `db.update_event`, `face_recognizer`, `visual_matcher`
 - Produces: `POST /api/entities/classify-event`
 
-- [ ] **Passo 1: Criar modelo Pydantic `ClassifyEntityRequest`**
+- [x] **Passo 1: Criar modelo Pydantic `ClassifyEntityRequest`**
 ```python
 class ClassifyEntityRequest(BaseModel):
     event_id: str
@@ -75,13 +75,13 @@ class ClassifyEntityRequest(BaseModel):
     license_plate: Optional[str] = None
 ```
 
-- [ ] **Passo 2: Implementar o handler `classify_entity_event`**
+- [x] **Passo 2: Implementar o handler `classify_entity_event`**
 - Se `entity_type == "person"`: salva em `data/known_faces/<Nome>/`, atualiza evento e recarrega `face_recognizer`.
 - Se `entity_type == "vehicle"`: salva em `data/known_vehicles/<Nome>_[<PLACA>]/` (ou `<Nome>/` se sem placa), atualiza evento com `license_plate` e recarrega `visual_matcher.load_vehicles()`.
 - Se `entity_type == "pet"`: salva em `data/known_pets/<Nome>/`, atualiza evento e recarrega `visual_matcher.load_pets()`.
 - Manter `@router.post("/faces/classify-event")` chamando a mesma lógica para retrocompatibilidade.
 
-- [ ] **Passo 3: Commit das alterações**
+- [x] **Passo 3: Commit das alterações**
 ```bash
 git add app/api/routes.py tests/test_entity_registration.py
 git commit -m "feat(api): implementa classificacao de eventos para pessoas, veiculos e pets"
@@ -98,14 +98,14 @@ git commit -m "feat(api): implementa classificacao de eventos para pessoas, veic
 **Interfaces:**
 - Produces: `POST /api/entities/upload` (multipart/form-data)
 
-- [ ] **Passo 1: Implementar o endpoint `upload_entity`**
+- [x] **Passo 1: Implementar o endpoint `upload_entity`**
 Recebe `entity_type: str = Form(...)`, `entity_name: str = Form(...)`, `license_plate: Optional[str] = Form(None)` e `files: List[UploadFile] = File(...)`.
 - Valida extensões (`.jpg`, `.jpeg`, `.png`, `.webp`).
 - Cria pastas com segurança.
 - Grava bytes das imagens.
 - Recarrega galeria correspondente na memória/GPU.
 
-- [ ] **Passo 2: Commit das alterações**
+- [x] **Passo 2: Commit das alterações**
 ```bash
 git add app/api/routes.py tests/test_entity_registration.py
 git commit -m "feat(api): implementa upload manual direto de fotos para pessoas, veiculos e pets"
@@ -118,16 +118,16 @@ git commit -m "feat(api): implementa upload manual direto de fotos para pessoas,
 **Files:**
 - Modify: `app/static/dashboard.html`
 
-- [ ] **Passo 1: Atualizar o HTML da seção `#face-trainer-section`**
+- [x] **Passo 1: Atualizar o HTML da seção `#face-trainer-section`**
 - Adicionar abas de categoria: `[👤 Pessoas]` `[🚗 Veículos]` `[🐾 Pets]`.
 - Adicionar botão `[➕ Novo Cadastro por Foto]`.
 
-- [ ] **Passo 2: Atualizar scripts JS para gerenciar a aba ativa de candidatos**
+- [x] **Passo 2: Atualizar scripts JS para gerenciar a aba ativa de candidatos**
 - Variável de estado `currentCandidateType = "person"`.
 - Atualizar `loadTrainingCandidates()` para passar `entity_type=${currentCandidateType}`.
 - Renderizar os cards conforme a categoria ativa com botões rápidos dos itens conhecidos correspondentes (`knownPersonsList`, `knownVehiclesList`, `knownPetsList`).
 
-- [ ] **Passo 3: Commit das alterações**
+- [x] **Passo 3: Commit das alterações**
 ```bash
 git add app/static/dashboard.html
 git commit -m "feat(dashboard): adiciona abas por categoria na esteira de auto-enrollment"
@@ -140,18 +140,18 @@ git commit -m "feat(dashboard): adiciona abas por categoria na esteira de auto-e
 **Files:**
 - Modify: `app/static/dashboard.html`
 
-- [ ] **Passo 1: Atualizar o modal existente `#modal-classify`**
+- [x] **Passo 1: Atualizar o modal existente `#modal-classify`**
 - Adicionar campo condicional de placa para veículos.
 - Rótulos dinâmicos de título e placeholder conforme a categoria.
 - Integração da chamada para `/api/entities/classify-event`.
 
-- [ ] **Passo 2: Criar o novo modal `#modal-manual-upload`**
+- [x] **Passo 2: Criar o novo modal `#modal-manual-upload`**
 - Seletor de Categoria: Pessoa, Veículo, Pet.
 - Campos de Nome e Placa (condicional).
 - Área de Drag & Drop para upload de fotos com pré-visualização.
 - Chamada para `/api/entities/upload` e recarga dinâmica do dashboard e conhecidos.
 
-- [ ] **Passo 3: Commit das alterações**
+- [x] **Passo 3: Commit das alterações**
 ```bash
 git add app/static/dashboard.html
 git commit -m "feat(dashboard): cria modal de upload manual direto e adapta modal de classificacao"
@@ -164,13 +164,13 @@ git commit -m "feat(dashboard): cria modal de upload manual direto e adapta moda
 **Files:**
 - Modify: `app/static/dashboard.html`
 
-- [ ] **Passo 1: Atualizar `renderEventsTable`**
+- [x] **Passo 1: Atualizar `renderEventsTable`**
 - Exibir botão `Treinar` contextual para eventos não conhecidos de qualquer entidade (`person`, `vehicle`, `pet`).
 
-- [ ] **Passo 2: Atualizar `openForensicModal`**
+- [x] **Passo 2: Atualizar `openForensicModal`**
 - Atualizar o botão de cadastro no rodapé do modal forense com base no tipo de entidade (`person`, `vehicle`, `pet`).
 
-- [ ] **Passo 3: Commit das alterações**
+- [x] **Passo 3: Commit das alterações**
 ```bash
 git add app/static/dashboard.html
 git commit -m "feat(dashboard): habilita treinamento e cadastro contextual no feed forense e modal"
@@ -186,6 +186,6 @@ git commit -m "feat(dashboard): habilita treinamento e cadastro contextual no fe
 - Inspect: `app/static/dashboard.html`
 - Inspect: `tests/test_entity_registration.py`
 
-- [ ] **Passo 1: Verificação estática e de sintaxe do código Python e HTML/JS**
-- [ ] **Passo 2: Validação de cobertura dos testes unitários criados**
-- [ ] **Passo 3: Auditoria final de integridade e commit final**
+- [x] **Passo 1: Verificação estática e de sintaxe do código Python e HTML/JS**
+- [x] **Passo 2: Validação de cobertura dos testes unitários criados**
+- [x] **Passo 3: Auditoria final de integridade e commit final**
