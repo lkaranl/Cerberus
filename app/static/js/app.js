@@ -607,12 +607,11 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (e) {}
   }
 
-  // --- 7. Radar de Presença Multi-Câmera Dedicado (2x Portão, 1x Garagem, 1x Fundo) ---
+  // --- 7. Radar de Presença Multi-Câmera Dedicado (Portão, Garagem e Fundo) ---
   const radarDedicatedSlots = [
-    { id: "slot-portao-1", target: "portao", defaultName: "Câmera do Portão", sublabel: "Portão • Atual", evt: null },
-    { id: "slot-portao-2", target: "portao", defaultName: "Câmera do Portão", sublabel: "Portão • Anterior", evt: null },
-    { id: "slot-garagem",   target: "garagem", defaultName: "Câmera da Garagem", sublabel: "Câmera da Garagem", evt: null },
-    { id: "slot-fundo",     target: "fundo",   defaultName: "Câmera Área do Fundo", sublabel: "Área do Fundo", evt: null }
+    { id: "slot-portao",   target: "portao", defaultName: "Câmera do Portão", sublabel: "Portão", evt: null },
+    { id: "slot-garagem",  target: "garagem", defaultName: "Câmera da Garagem", sublabel: "Garagem", evt: null },
+    { id: "slot-fundo",    target: "fundo",   defaultName: "Câmera Área do Fundo", sublabel: "Área do Fundo", evt: null }
   ];
 
   function getCameraSlotType(evt) {
@@ -727,18 +726,17 @@ document.addEventListener("DOMContentLoaded", () => {
       const data = await res.json();
       const events = data.events || [];
 
-      // 1. Portão (cam-0): mais recente e anterior
+      // 1. Portão (cam-0): mais recente
       const portaoEvts = events.filter(e => getCameraSlotType(e) === "portao");
       if (portaoEvts[0]) radarDedicatedSlots[0].evt = portaoEvts[0];
-      if (portaoEvts[1]) radarDedicatedSlots[1].evt = portaoEvts[1];
 
       // 2. Garagem (cam-1): mais recente
       const garagemEvts = events.filter(e => getCameraSlotType(e) === "garagem");
-      if (garagemEvts[0]) radarDedicatedSlots[2].evt = garagemEvts[0];
+      if (garagemEvts[0]) radarDedicatedSlots[1].evt = garagemEvts[0];
 
       // 3. Fundo (cam-2): mais recente
       const fundoEvts = events.filter(e => getCameraSlotType(e) === "fundo");
-      if (fundoEvts[0]) radarDedicatedSlots[3].evt = fundoEvts[0];
+      if (fundoEvts[0]) radarDedicatedSlots[2].evt = fundoEvts[0];
 
       renderAllRadarSlots();
     } catch (e) {}
@@ -747,17 +745,11 @@ document.addEventListener("DOMContentLoaded", () => {
   function handleNewRadarEvent(evt) {
     const type = getCameraSlotType(evt);
     if (type === "portao") {
-      const curFirst = radarDedicatedSlots[0].evt;
-      const curFirstId = curFirst ? (curFirst.event_id || curFirst.id) : null;
-      const newId = evt.event_id || evt.id;
-      if (curFirstId !== newId) {
-        radarDedicatedSlots[1].evt = curFirst;
-      }
       radarDedicatedSlots[0].evt = evt;
     } else if (type === "garagem") {
-      radarDedicatedSlots[2].evt = evt;
+      radarDedicatedSlots[1].evt = evt;
     } else if (type === "fundo") {
-      radarDedicatedSlots[3].evt = evt;
+      radarDedicatedSlots[2].evt = evt;
     }
     renderAllRadarSlots();
   }
