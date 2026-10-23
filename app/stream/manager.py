@@ -11,6 +11,7 @@ from app.core.logging import logger
 from app.stream.capture import RTSPCapture
 from app.detector.engine import detector_engine
 from app.detector.tracker import CameraTrackerManager
+from app.detector.motion import MotionDetector
 
 class StreamManager:
     """
@@ -22,6 +23,8 @@ class StreamManager:
         self.cameras_config: List[CameraConfig] = []
         self.captures: Dict[str, RTSPCapture] = {}
         self.trackers: Dict[str, CameraTrackerManager] = {}
+        self.motion_detectors: Dict[str, MotionDetector] = {}
+        self.last_motion_time: Dict[str, float] = {}
 
         # Armazenamento do último frame processado (JPEG e raw)
         self.latest_annotated_jpeg: Dict[str, bytes] = {}
@@ -162,6 +165,8 @@ class StreamManager:
                     event_callback=self._on_event_triggered
                 )
                 self.trackers[cam.id] = tracker
+                self.motion_detectors[cam.id] = MotionDetector(min_area_ratio=settings.motion_min_area)
+                self.last_motion_time[cam.id] = time.time()
                 self.inference_fps[cam.id] = 0.0
                 self.stream_fps[cam.id] = 0.0
 
@@ -193,6 +198,8 @@ class StreamManager:
 
         self.captures.clear()
         self.trackers.clear()
+        self.motion_detectors.clear()
+        self.last_motion_time.clear()
         self.latest_detections.clear()
         logger.info("StreamManager finalizado.")
 
@@ -294,6 +301,49 @@ class StreamManager:
                     continue
 
                 last_inferred_id = frame_id
+                now = time.time()
+
+                # Motion Gating Adaptativo (Estilo Frigate)
+                motion_detector = self.motion_detectors.get(cam.id)
+                has_motion = True
+                motion_ratio = 0.0
+
+                if settings.motion_gating_enabled and motion_detector:
+                    has_motion, motion_ratio = motion_detector.detect(raw_frame)
+                    if has_motion:
+                        self.last_motion_time[cam.id] = now
+
+                # Avalia se a inferência de IA deve prosseguir:
+                # 1. Movimento detectado no frame atual
+                # 2. Período de graça ativo após o último movimento
+                # 3. Há entidades ativas sendo rastreadas na cena
+                time_since_motion = now - self.last_motion_time.get(cam.id, 0.0)
+                in_grace_period = time_since_motion <= settings.motion_grace_period
+                has_tracks = tracker.has_active_tracks() if tracker else False
+
+                should_infer = (not settings.motion_gating_enabled) or has_motion or in_grace_period or has_tracks
+
+                if not should_infer:
+                    # Modo Eco: Pula YOLO e extratores biométricos economizando ciclos da GPU e VRAM
+                    cur_telem = self.latest_telemetry.get(cam.id) or {}
+                    self.latest_telemetry[cam.id] = {
+                        **cur_telem,
+                        "camera_id": cam.id,
+                        "camera_name": cam.name,
+                        "connected": capture.is_connected,
+                        "capture_fps": capture.fps,
+                        "stream_fps": self.stream_fps.get(cam.id, 0.0),
+                        "inference_fps": 0.0,
+                        "resolution": capture.resolution,
+                        "detections_count": 0,
+                        "nvdec_active": getattr(capture, "is_nvdec_active", False),
+                        "motion_active": False,
+                        "motion_gated": True,
+                        "motion_ratio": round(motion_ratio, 4),
+                        "timestamp": now
+                    }
+                    await asyncio.sleep(0.04)  # Repouso leve (~25 verificações/segundo)
+                    continue
 
                 # Executa detecção YOLO/TensorRT em thread pool separada
                 detections = await asyncio.to_thread(
@@ -308,7 +358,6 @@ class StreamManager:
                     await tracker.process_tracks(raw_frame, detections)
 
                 # Compartilha as detecções enriquecidas (com nome, status, cor) para o stream_worker
-                now = time.time()
                 self.latest_detections[cam.id] = {
                     "detections": detections,
                     "timestamp": now
@@ -348,7 +397,7 @@ class StreamManager:
                     fps_counter = 0
                     fps_timer = now
 
-                # Telemetria consolidada em tempo real
+                # Telemetria consolidada em tempo real com status de movimento
                 self.latest_telemetry[cam.id] = {
                     "camera_id": cam.id,
                     "camera_name": cam.name,
@@ -359,6 +408,9 @@ class StreamManager:
                     "resolution": capture.resolution,
                     "detections_count": len(detections),
                     "nvdec_active": getattr(capture, "is_nvdec_active", False),
+                    "motion_active": has_motion,
+                    "motion_gated": False,
+                    "motion_ratio": round(motion_ratio, 4),
                     "timestamp": now
                 }
 
